@@ -1,34 +1,31 @@
 import { router } from "expo-router";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
-import React, { useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
+import React, { useEffect, useState } from "react";
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-import { auth, db } from "../services/firebaseConfig";
+import { auth } from "../services/firebaseConfig";
 import { styles } from "../styles/estoqueStyles";
 
 export default function Login() {
-  const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [tipoUsuario, setTipoUsuario] = useState("responsavel");
-  const [modoCadastro, setModoCadastro] = useState(false);
 
-  const BotaoOpcao = ({ texto, valor }) => (
-    <Pressable
-      onPress={() => setTipoUsuario(valor)}
-      style={[styles.opcao, tipoUsuario === valor && styles.opcaoSelecionada]}
-    >
-      <Text
-        style={[
-          styles.textoOpcao,
-          tipoUsuario === valor && styles.textoOpcaoSelecionada,
-        ]}
-      >
-        {texto}
-      </Text>
-    </Pressable>
-  );
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (usuario) => {
+      if (usuario) {
+        router.replace("/(tabs)");
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const entrar = async () => {
     if (!email || !senha) {
@@ -37,66 +34,24 @@ export default function Login() {
     }
 
     try {
-      await signInWithEmailAndPassword(auth, email, senha);
+      await signInWithEmailAndPassword(auth, email.trim(), senha);
       router.replace("/(tabs)");
     } catch (error) {
+      console.log(error);
       Alert.alert("Erro", "E-mail ou senha inválidos.");
-    }
-  };
-
-  const cadastrar = async () => {
-    if (!nome || !email || !senha) {
-      Alert.alert("Atenção", "Preencha todos os campos.");
-      return;
-    }
-
-    try {
-      const credencial = await createUserWithEmailAndPassword(auth, email, senha);
-
-      await setDoc(doc(db, "usuarios", credencial.user.uid), {
-        nome,
-        email,
-        tipoUsuario,
-        criadoEm: new Date(),
-      });
-
-      Alert.alert("Sucesso", "Usuário cadastrado!");
-      router.replace("/(tabs)");
-    } catch (error) {
-      Alert.alert("Erro", "Não foi possível cadastrar o usuário.");
     }
   };
 
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.titulo}>BitStorage</Text>
+
       <Text style={styles.subtituloPrincipal}>
         Acesso ao sistema da Casa da Criança
       </Text>
 
       <View style={styles.formulario}>
-        <Text style={styles.subtitulo}>
-          {modoCadastro ? "Criar conta" : "Entrar"}
-        </Text>
-
-        {modoCadastro && (
-          <>
-            <TextInput
-              style={styles.input}
-              placeholder="Nome"
-              value={nome}
-              onChangeText={setNome}
-            />
-
-            <Text style={styles.label}>Tipo de usuário</Text>
-
-            <View style={styles.opcoes}>
-                <BotaoOpcao texto="Administrador" valor="administrador" />
-                <BotaoOpcao texto="Operador" valor="operador" />
-                <BotaoOpcao texto="Doador" valor="doador" />
-            </View>
-          </>
-        )}
+        <Text style={styles.subtitulo}>Entrar</Text>
 
         <TextInput
           style={styles.input}
@@ -115,24 +70,8 @@ export default function Login() {
           secureTextEntry
         />
 
-        <Pressable
-          style={styles.botaoSalvar}
-          onPress={modoCadastro ? cadastrar : entrar}
-        >
-          <Text style={styles.textoBotao}>
-            {modoCadastro ? "Cadastrar" : "Entrar"}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.botaoCancelar}
-          onPress={() => setModoCadastro(!modoCadastro)}
-        >
-          <Text style={styles.textoCancelar}>
-            {modoCadastro
-              ? "Já tenho conta"
-              : "Criar nova conta"}
-          </Text>
+        <Pressable style={styles.botaoSalvar} onPress={entrar}>
+          <Text style={styles.textoBotao}>Entrar</Text>
         </Pressable>
       </View>
     </ScrollView>

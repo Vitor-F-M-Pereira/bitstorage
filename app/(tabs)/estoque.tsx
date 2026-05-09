@@ -1,22 +1,28 @@
+import { onAuthStateChanged } from "firebase/auth";
 import {
-    collection,
-    deleteDoc,
-    doc,
-    getDocs,
-    updateDoc,
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  updateDoc,
 } from "firebase/firestore";
+
 import React, { useEffect, useState } from "react";
+
 import {
-    Alert,
-    FlatList,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
-import { db } from "../../services/firebaseConfig";
+import { auth, db } from "../../services/firebaseConfig";
 import { styles } from "../../styles/estoqueStyles";
 
 const categorias = [
@@ -34,6 +40,8 @@ const categorias = [
 ];
 
 export default function Estoque() {
+  const [tipoUsuario, setTipoUsuario] = useState("");
+
   const [alimentos, setAlimentos] = useState([]);
   const [busca, setBusca] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
@@ -47,29 +55,60 @@ export default function Estoque() {
   const [quantidade, setQuantidade] = useState("");
   const [tipoQuantidade, setTipoQuantidade] = useState("unidades");
   const [validade, setValidade] = useState("");
-  const [origem, setOrigem] = useState("Doação");
+  const [origem, setOrigem] = useState("Cadastro interno");
 
-  const buscarAlimentos = async () => {
-    try {
-      const snapshot = await getDocs(collection(db, "alimentos"));
-      const lista = [];
+  const [modalVisivel, setModalVisivel] = useState(false);
+  const [tipoMovimentacao, setTipoMovimentacao] = useState("");
+  const [itemSelecionado, setItemSelecionado] = useState(null);
+  const [valorMovimentacao, setValorMovimentacao] = useState("");
 
-      snapshot.forEach((documento) => {
-        lista.push({
-          id: documento.id,
-          ...documento.data(),
-        });
-      });
-
-      setAlimentos(lista);
-    } catch (error) {
-      console.log(error);
-      Alert.alert("Erro", "Não foi possível buscar os alimentos.");
-    }
-  };
+  const ehCozinheiro = tipoUsuario === "cozinheiro";
 
   useEffect(() => {
-    buscarAlimentos();
+    const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
+      if (!usuario) return;
+
+      try {
+        const usuarioRef = doc(db, "usuarios", usuario.uid);
+        const usuarioSnap = await getDoc(usuarioRef);
+
+        if (usuarioSnap.exists()) {
+          const dados = usuarioSnap.data();
+          setTipoUsuario(String(dados.tipoUsuario || "cozinheiro").toLowerCase());  
+        } else {
+          setTipoUsuario("cozinheiro");
+        }
+      } catch (error) {
+        console.log(error);
+        setTipoUsuario("cozinheiro");
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "alimentos"),
+      (snapshot) => {
+        const lista = [];
+
+        snapshot.forEach((documento) => {
+          lista.push({
+            id: documento.id,
+            ...documento.data(),
+          });
+        });
+
+        setAlimentos(lista);
+      },
+      (error) => {
+        console.log(error);
+        Alert.alert("Erro", "Não foi possível atualizar os alimentos.");
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const formatarData = (texto) => {
@@ -140,7 +179,7 @@ export default function Estoque() {
     setQuantidade("");
     setTipoQuantidade("unidades");
     setValidade("");
-    setOrigem("Doação");
+    setOrigem("Cadastro interno");
   };
 
   const editarAlimento = (item) => {
@@ -151,11 +190,16 @@ export default function Estoque() {
     setQuantidade(String(item.quantidade));
     setTipoQuantidade(item.tipoQuantidade || "unidades");
     setValidade(item.validade);
-    setOrigem(item.origem || "Doação");
+    setOrigem(item.origem || "Cadastro interno");
   };
 
   const salvarEdicao = async () => {
     if (!idEditando) return;
+
+    if (!nome || !quantidade || !validade) {
+      Alert.alert("Atenção", "Preencha nome, quantidade e validade.");
+      return;
+    }
 
     try {
       await updateDoc(doc(db, "alimentos", idEditando), {
@@ -170,10 +214,84 @@ export default function Estoque() {
 
       Alert.alert("Sucesso", "Alimento atualizado!");
       limparEdicao();
-      buscarAlimentos();
     } catch (error) {
       console.log(error);
       Alert.alert("Erro", "Não foi possível atualizar.");
+    }
+  };
+
+  const abrirModalMovimentacao = (item, tipo) => {
+    if (!ehCozinheiro) {
+      Alert.alert("Acesso negado", "Somente cozinheiros podem registrar entrada e saída.");
+      return;
+    }
+
+    setItemSelecionado(item);
+    setTipoMovimentacao(tipo);
+    setValorMovimentacao("");
+    setModalVisivel(true);
+  };
+
+  const fecharModalMovimentacao = () => {
+    setModalVisivel(false);
+    setItemSelecionado(null);
+    setTipoMovimentacao("");
+    setValorMovimentacao("");
+  };
+
+  const registrarMovimentacao = async () => {
+    try {
+      if (!ehCozinheiro) {
+        Alert.alert("Acesso negado", "Somente cozinheiros podem registrar movimentações.");
+        fecharModalMovimentacao();
+        return;
+      }
+
+      if (!itemSelecionado) return;
+
+      const quantidadeAtual = Number(itemSelecionado.quantidade || 0);
+      const quantidadeMovimentada = Number(valorMovimentacao);
+
+      if (isNaN(quantidadeMovimentada) || quantidadeMovimentada <= 0) {
+        Alert.alert("Erro", "Digite uma quantidade válida.");
+        return;
+      }
+
+      let novaQuantidade = quantidadeAtual;
+
+      if (tipoMovimentacao === "entrada") {
+        novaQuantidade += quantidadeMovimentada;
+      } else {
+        if (quantidadeMovimentada > quantidadeAtual) {
+          Alert.alert("Erro", "A saída não pode ser maior que o estoque.");
+          return;
+        }
+
+        novaQuantidade -= quantidadeMovimentada;
+      }
+
+      await updateDoc(doc(db, "alimentos", itemSelecionado.id), {
+        quantidade: novaQuantidade,
+        atualizadoEm: new Date(),
+      });
+
+      await addDoc(collection(db, "movimentacoes"), {
+        produtoId: itemSelecionado.id,
+        nomeProduto: itemSelecionado.nome,
+        tipo: tipoMovimentacao,
+        quantidade: quantidadeMovimentada,
+        quantidadeAnterior: quantidadeAtual,
+        quantidadeAtual: novaQuantidade,
+        tipoQuantidade: itemSelecionado.tipoQuantidade || "unidades",
+        registradoPorTipo: tipoUsuario,
+        data: new Date(),
+      });
+
+      Alert.alert("Sucesso", "Movimentação registrada!");
+      fecharModalMovimentacao();
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível registrar movimentação.");
     }
   };
 
@@ -181,7 +299,6 @@ export default function Estoque() {
     try {
       await deleteDoc(doc(db, "alimentos", id));
       Alert.alert("Sucesso", "Alimento excluído!");
-      buscarAlimentos();
     } catch (error) {
       console.log(error);
       Alert.alert("Erro", "Não foi possível excluir.");
@@ -244,11 +361,15 @@ export default function Estoque() {
         ]}
       >
         <Text style={styles.nome}>{item.nome}</Text>
+
         <Text>Categoria: {item.categoria}</Text>
+
         <Text>
           Quantidade: {item.quantidade} {item.tipoQuantidade}
         </Text>
-        <Text>Origem: {item.origem}</Text>
+
+        <Text>Origem: {item.origem || "Cadastro interno"}</Text>
+
         <Text>Validade: {item.validade}</Text>
 
         {dias !== null && dias >= 0 && (
@@ -281,6 +402,44 @@ export default function Estoque() {
             <Text style={styles.textoBotaoCard}>Excluir</Text>
           </Pressable>
         </View>
+
+        {ehCozinheiro && (
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 10,
+              marginTop: 10,
+            }}
+          >
+            <Pressable
+              style={{
+                flex: 1,
+                backgroundColor: "#2e7d32",
+                padding: 15,
+                borderRadius: 12,
+                alignItems: "center",
+              }}
+              onPress={() => abrirModalMovimentacao(item, "entrada")}
+            >
+              <Text style={{ color: "white", fontWeight: "bold" }}>
+                Entrada
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={{
+                flex: 1,
+                backgroundColor: "#c62828",
+                padding: 15,
+                borderRadius: 12,
+                alignItems: "center",
+              }}
+              onPress={() => abrirModalMovimentacao(item, "saida")}
+            >
+              <Text style={{ color: "white", fontWeight: "bold" }}>Saída</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     );
   };
@@ -288,7 +447,10 @@ export default function Estoque() {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.titulo}>Estoque</Text>
-      <Text style={styles.subtituloPrincipal}>Consulta e controle dos itens</Text>
+
+      <Text style={styles.subtituloPrincipal}>
+        Consulta e controle dos itens
+      </Text>
 
       {modoEdicao && (
         <View style={styles.formulario}>
@@ -329,6 +491,7 @@ export default function Estoque() {
       )}
 
       <Text style={styles.subtitulo}>Buscar alimento</Text>
+
       <TextInput
         style={styles.input}
         placeholder="Digite o nome do alimento"
@@ -337,6 +500,7 @@ export default function Estoque() {
       />
 
       <Text style={styles.subtitulo}>Filtrar por categoria</Text>
+
       <View style={styles.opcoes}>
         {categorias.map((item) => (
           <BotaoOpcao
@@ -349,22 +513,26 @@ export default function Estoque() {
       </View>
 
       <Text style={styles.subtitulo}>Filtrar por vencimento</Text>
+
       <View style={styles.opcoes}>
         <BotaoOpcao
           texto="Todos"
           selecionado={filtroStatus === "todos"}
           aoPressionar={() => setFiltroStatus("todos")}
         />
+
         <BotaoOpcao
           texto="Próximos"
           selecionado={filtroStatus === "proximos"}
           aoPressionar={() => setFiltroStatus("proximos")}
         />
+
         <BotaoOpcao
           texto="Vencidos"
           selecionado={filtroStatus === "vencidos"}
           aoPressionar={() => setFiltroStatus("vencidos")}
         />
+
         <BotaoOpcao
           texto="Válidos"
           selecionado={filtroStatus === "validos"}
@@ -381,6 +549,87 @@ export default function Estoque() {
           <Text style={styles.listaVazia}>Nenhum alimento encontrado.</Text>
         }
       />
+
+      <Modal visible={modalVisivel} transparent animationType="fade">
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "white",
+              borderRadius: 20,
+              padding: 20,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 22,
+                fontWeight: "bold",
+                marginBottom: 10,
+              }}
+            >
+              {tipoMovimentacao === "entrada"
+                ? "Entrada de estoque"
+                : "Saída de estoque"}
+            </Text>
+
+            <Text style={{ marginBottom: 15 }}>
+              Produto: {itemSelecionado?.nome}
+            </Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Quantidade"
+              keyboardType="numeric"
+              value={valorMovimentacao}
+              onChangeText={setValorMovimentacao}
+            />
+
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 10,
+                marginTop: 10,
+              }}
+            >
+              <Pressable
+                style={{
+                  flex: 1,
+                  backgroundColor: "#1565c0",
+                  padding: 15,
+                  borderRadius: 10,
+                  alignItems: "center",
+                }}
+                onPress={registrarMovimentacao}
+              >
+                <Text style={{ color: "white", fontWeight: "bold" }}>
+                  Confirmar
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={{
+                  flex: 1,
+                  backgroundColor: "#757575",
+                  padding: 15,
+                  borderRadius: 10,
+                  alignItems: "center",
+                }}
+                onPress={fecharModalMovimentacao}
+              >
+                <Text style={{ color: "white", fontWeight: "bold" }}>
+                  Cancelar
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }

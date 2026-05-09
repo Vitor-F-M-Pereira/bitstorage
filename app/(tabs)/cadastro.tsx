@@ -80,6 +80,7 @@ export default function Cadastro() {
     setValidade("");
     setOrigem("Doação");
   };
+  
 
   const validarCampos = () => {
     if (!nome || !categoria || !quantidade || !validade) {
@@ -104,16 +105,51 @@ export default function Cadastro() {
     if (!validarCampos()) return;
 
     try {
-      await addDoc(collection(db, "alimentos"), {
-        nome,
-        categoria,
-        quantidade: Number(quantidade),
-        tipoQuantidade,
-        validade,
-        origem,
-        criadoEm: new Date(),
-        atualizadoEm: new Date(),
-      });
+      const novoAlimento = await addDoc(
+  collection(db, "alimentos"),
+  {
+    nome,
+    categoria,
+    quantidade: Number(quantidade),
+    tipoQuantidade,
+    validade,
+    origem,
+    precoCompra:
+      origem === "Compra"
+        ? Number(precoCompra)
+        : 0,
+    criadoEm: new Date(),
+  }
+);
+
+await addDoc(
+  collection(db, "movimentacoes"),
+  {
+    produtoId: novoAlimento.id,
+    nomeProduto: nome,
+
+    tipo: "entrada",
+
+    quantidade: Number(quantidade),
+
+    quantidadeAnterior: 0,
+
+    quantidadeAtual: Number(quantidade),
+
+    categoria,
+
+    origem,
+
+    tipoQuantidade,
+
+    observacao:
+      origem === "Compra"
+        ? "Entrada por compra"
+        : "Entrada por doação",
+
+    data: new Date(),
+  }
+);
 
       Alert.alert("Sucesso", "Alimento cadastrado!");
       limparCampos();
@@ -138,6 +174,8 @@ export default function Cadastro() {
       </Text>
     </Pressable>
   );
+
+  const [precoCompra, setPrecoCompra] = useState("");
 
   return (
     <ScrollView style={styles.container}>

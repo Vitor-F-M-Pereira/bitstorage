@@ -1,35 +1,48 @@
-import { collection, getDocs } from "firebase/firestore";
+import { router } from "expo-router";
+import { signOut } from "firebase/auth";
+import { collection, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
-import { db } from "../../services/firebaseConfig";
+import { auth, db } from "../../services/firebaseConfig";
 import { styles } from "../../styles/estoqueStyles";
 
 export default function Inicio() {
   const [alimentos, setAlimentos] = useState([]);
 
-  const buscarAlimentos = async () => {
-    try {
-      const snapshot = await getDocs(collection(db, "alimentos"));
-      const lista = [];
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "alimentos"),
+      (snapshot) => {
+        const lista = [];
 
-      snapshot.forEach((doc) => {
-        lista.push({
-          id: doc.id,
-          ...doc.data(),
+        snapshot.forEach((documento) => {
+          lista.push({
+            id: documento.id,
+            ...documento.data(),
+          });
         });
-      });
 
-      setAlimentos(lista);
+        setAlimentos(lista);
+      },
+      (error) => {
+        console.log(error);
+        Alert.alert("Erro", "Não foi possível carregar os dados.");
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const sair = async () => {
+    try {
+      await signOut(auth);
+      router.replace("/login");
     } catch (error) {
       console.log(error);
-      Alert.alert("Erro", "Não foi possível carregar os dados.");
+      Alert.alert("Erro", "Não foi possível sair da conta.");
     }
   };
-
-  useEffect(() => {
-    buscarAlimentos();
-  }, []);
 
   const converterData = (data) => {
     if (!data) return null;
@@ -91,6 +104,10 @@ export default function Inicio() {
           evitando desperdícios e organizando melhor o consumo.
         </Text>
       </View>
+
+      <Pressable style={styles.botaoCancelar} onPress={sair}>
+        <Text style={styles.textoCancelar}>Sair da conta</Text>
+      </Pressable>
     </ScrollView>
   );
 }
