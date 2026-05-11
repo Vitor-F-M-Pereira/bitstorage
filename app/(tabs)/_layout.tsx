@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs, router } from "expo-router";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -5,14 +6,10 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Colors } from "@/constants/theme";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { auth, db } from "../../services/firebaseConfig";
+import { colors } from "../../styles/estoqueStyles";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   const [tipoUsuario, setTipoUsuario] = useState("");
   const [carregando, setCarregando] = useState(true);
 
@@ -29,7 +26,9 @@ export default function TabLayout() {
 
         if (usuarioSnap.exists()) {
           const dados = usuarioSnap.data();
-          setTipoUsuario(String(dados.tipoUsuario || "cozinheiro").toLowerCase());
+          setTipoUsuario(
+            String(dados.tipoUsuario || "cozinheiro").toLowerCase()
+          );
         } else {
           setTipoUsuario("cozinheiro");
         }
@@ -46,8 +45,15 @@ export default function TabLayout() {
 
   if (carregando) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" />
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.fundo,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.principal} />
       </View>
     );
   }
@@ -58,17 +64,40 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
         headerShown: false,
         tabBarButton: HapticTab,
+
+        tabBarActiveTintColor: colors.principal,
+        tabBarInactiveTintColor: colors.textoSuave,
+
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopWidth: 1,
+          borderTopColor: colors.borda,
+          height: 70,
+          paddingTop: 8,
+          paddingBottom: 8,
+
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 6,
+          elevation: 6,
+        },
+
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "600",
+          marginTop: 2,
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: "Início",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
@@ -78,8 +107,8 @@ export default function TabLayout() {
         options={{
           title: "Cadastro",
           href: ehAdministrador || ehCozinheiro ? undefined : null,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="plus.circle.fill" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="add-circle-outline" size={size} color={color} />
           ),
         }}
       />
@@ -89,8 +118,8 @@ export default function TabLayout() {
         options={{
           title: "Estoque",
           href: ehAdministrador || ehCozinheiro ? undefined : null,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="archivebox.fill" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cube-outline" size={size} color={color} />
           ),
         }}
       />
@@ -100,8 +129,8 @@ export default function TabLayout() {
         options={{
           title: "Alertas",
           href: ehAdministrador || ehCozinheiro ? undefined : null,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="bell.fill" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="notifications-outline" size={size} color={color} />
           ),
         }}
       />
@@ -111,8 +140,19 @@ export default function TabLayout() {
         options={{
           title: "Histórico",
           href: ehAdministrador ? undefined : null,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="clock.fill" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="time-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="usuarios"
+        options={{
+          title: "Usuários",
+          href: ehAdministrador ? undefined : null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people-outline" size={size} color={color} />
           ),
         }}
       />
@@ -123,17 +163,6 @@ export default function TabLayout() {
           href: null,
         }}
       />
-
-      <Tabs.Screen
-  name="usuarios"
-  options={{
-    title: "Usuários",
-    href: ehAdministrador ? undefined : null,
-    tabBarIcon: ({ color }) => (
-      <IconSymbol size={28} name="person.2.fill" color={color} />
-    ),
-  }}
-/>
     </Tabs>
   );
 }

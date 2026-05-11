@@ -41,6 +41,7 @@ export default function Historico() {
 
   const [tipoUsuario, setTipoUsuario] = useState("");
   const [carregandoUsuario, setCarregandoUsuario] = useState(true);
+  const [carregandoMovimentacoes, setCarregandoMovimentacoes] = useState(true);
 
   const [movimentacoes, setMovimentacoes] = useState([]);
 
@@ -55,6 +56,7 @@ export default function Historico() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
       if (!usuario) {
+        setTipoUsuario("");
         setCarregandoUsuario(false);
         return;
       }
@@ -66,9 +68,12 @@ export default function Historico() {
         if (usuarioSnap.exists()) {
           const dados = usuarioSnap.data();
           setTipoUsuario(String(dados.tipoUsuario || "").toLowerCase());
+        } else {
+          setTipoUsuario("");
         }
       } catch (error) {
         console.log(error);
+        setTipoUsuario("");
       } finally {
         setCarregandoUsuario(false);
       }
@@ -83,18 +88,26 @@ export default function Historico() {
       orderBy("data", "desc")
     );
 
-    const unsubscribe = onSnapshot(consulta, (snapshot) => {
-      const lista = [];
+    const unsubscribe = onSnapshot(
+      consulta,
+      (snapshot) => {
+        const lista = [];
 
-      snapshot.forEach((documento) => {
-        lista.push({
-          id: documento.id,
-          ...documento.data(),
+        snapshot.forEach((documento) => {
+          lista.push({
+            id: documento.id,
+            ...documento.data(),
+          });
         });
-      });
 
-      setMovimentacoes(lista);
-    });
+        setMovimentacoes(lista);
+        setCarregandoMovimentacoes(false);
+      },
+      (error) => {
+        console.log(error);
+        setCarregandoMovimentacoes(false);
+      }
+    );
 
     return () => unsubscribe();
   }, []);
@@ -156,12 +169,16 @@ export default function Historico() {
 
   const saldoMovimentado = quantidadeEntrada - quantidadeSaida;
 
+  const carregandoTela = carregandoUsuario || carregandoMovimentacoes;
+
   const BotaoMes = ({ item }) => (
     <Pressable
+      disabled={carregandoTela}
       onPress={() => setMesSelecionado(item.valor)}
       style={[
         styles.opcao,
         mesSelecionado === item.valor && styles.opcaoSelecionada,
+        carregandoTela && { opacity: 0.6 },
       ]}
     >
       <Text
@@ -179,9 +196,7 @@ export default function Historico() {
     <View style={styles.card}>
       <Text style={styles.nome}>{item.nomeProduto}</Text>
 
-      <Text>
-        Tipo: {item.tipo === "entrada" ? "Entrada" : "Saída"}
-      </Text>
+      <Text>Tipo: {item.tipo === "entrada" ? "Entrada" : "Saída"}</Text>
 
       <Text>
         Quantidade: {item.quantidade} {item.tipoQuantidade || ""}
@@ -190,18 +205,29 @@ export default function Historico() {
       <Text>Quantidade anterior: {item.quantidadeAnterior}</Text>
       <Text>Quantidade atual: {item.quantidadeAtual}</Text>
 
-      <Text>
-        Registrado por: {item.registradoPorTipo || "Não informado"}
-      </Text>
+      <Text>Registrado por: {item.registradoPorTipo || "Não informado"}</Text>
 
       <Text>Data: {formatarData(item.data)}</Text>
     </View>
   );
 
-  if (carregandoUsuario) {
+  if (carregandoTela) {
     return (
-      <View style={styles.container}>
+      <View
+        style={[
+          styles.container,
+          {
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+        ]}
+      >
         <ActivityIndicator size="large" />
+
+        <Text style={{ marginTop: 10, textAlign: "center" }}>
+          Carregando relatório...
+        </Text>
       </View>
     );
   }

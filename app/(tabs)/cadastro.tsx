@@ -1,6 +1,14 @@
 import { addDoc, collection } from "firebase/firestore";
 import React, { useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { db } from "../../services/firebaseConfig";
 import { styles } from "../../styles/estoqueStyles";
@@ -25,6 +33,8 @@ export default function Cadastro() {
   const [tipoQuantidade, setTipoQuantidade] = useState("unidades");
   const [validade, setValidade] = useState("");
   const [origem, setOrigem] = useState("Doação");
+
+  const [carregando, setCarregando] = useState(false);
 
   const formatarData = (texto) => {
     const numeros = texto.replace(/\D/g, "");
@@ -80,7 +90,6 @@ export default function Cadastro() {
     setValidade("");
     setOrigem("Doação");
   };
-  
 
   const validarCampos = () => {
     if (!nome || !categoria || !quantidade || !validade) {
@@ -102,67 +111,61 @@ export default function Cadastro() {
   };
 
   const cadastrarAlimento = async () => {
+    if (carregando) return;
+
     if (!validarCampos()) return;
 
     try {
-      const novoAlimento = await addDoc(
-  collection(db, "alimentos"),
-  {
-    nome,
-    categoria,
-    quantidade: Number(quantidade),
-    tipoQuantidade,
-    validade,
-    origem,
-    precoCompra:
-      origem === "Compra"
-        ? Number(precoCompra)
-        : 0,
-    criadoEm: new Date(),
-  }
-);
+      setCarregando(true);
 
-await addDoc(
-  collection(db, "movimentacoes"),
-  {
-    produtoId: novoAlimento.id,
-    nomeProduto: nome,
+      const novoAlimento = await addDoc(collection(db, "alimentos"), {
+        nome: nome.trim(),
+        categoria,
+        quantidade: Number(quantidade),
+        tipoQuantidade,
+        validade,
+        origem,
+        precoCompra: 0,
+        criadoEm: new Date(),
+      });
 
-    tipo: "entrada",
-
-    quantidade: Number(quantidade),
-
-    quantidadeAnterior: 0,
-
-    quantidadeAtual: Number(quantidade),
-
-    categoria,
-
-    origem,
-
-    tipoQuantidade,
-
-    observacao:
-      origem === "Compra"
-        ? "Entrada por compra"
-        : "Entrada por doação",
-
-    data: new Date(),
-  }
-);
+      await addDoc(collection(db, "movimentacoes"), {
+        produtoId: novoAlimento.id,
+        nomeProduto: nome.trim(),
+        tipo: "entrada",
+        quantidade: Number(quantidade),
+        quantidadeAnterior: 0,
+        quantidadeAtual: Number(quantidade),
+        categoria,
+        origem,
+        tipoQuantidade,
+        precoCompra: 0,
+        observacao:
+          origem === "Compra"
+            ? "Entrada por compra"
+            : "Entrada por doação",
+        data: new Date(),
+      });
 
       Alert.alert("Sucesso", "Alimento cadastrado!");
       limparCampos();
     } catch (error) {
       console.log(error);
       Alert.alert("Erro", "Não foi possível cadastrar.");
+    } finally {
+      setCarregando(false);
     }
   };
 
   const BotaoOpcao = ({ texto, selecionado, aoPressionar }) => (
     <Pressable
+      disabled={carregando}
       onPress={aoPressionar}
-      style={[styles.opcao, selecionado && styles.opcaoSelecionada]}
+      style={[
+        styles.opcao,
+        selecionado && styles.opcaoSelecionada,
+        carregando && { opacity: 0.6 },
+      ]}
     >
       <Text
         style={[
@@ -175,8 +178,6 @@ await addDoc(
     </Pressable>
   );
 
-  const [precoCompra, setPrecoCompra] = useState("");
-
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.titulo}>Cadastro</Text>
@@ -187,10 +188,12 @@ await addDoc(
           style={styles.input}
           placeholder="Nome do alimento"
           value={nome}
+          editable={!carregando}
           onChangeText={setNome}
         />
 
         <Text style={styles.label}>Categoria</Text>
+
         <View style={styles.opcoes}>
           {categorias.map((item) => (
             <BotaoOpcao
@@ -206,22 +209,26 @@ await addDoc(
           style={styles.input}
           placeholder="Quantidade"
           value={quantidade}
+          editable={!carregando}
           onChangeText={setQuantidade}
           keyboardType="numeric"
         />
 
         <Text style={styles.label}>Tipo de quantidade</Text>
+
         <View style={styles.opcoes}>
           <BotaoOpcao
             texto="unidades"
             selecionado={tipoQuantidade === "unidades"}
             aoPressionar={() => setTipoQuantidade("unidades")}
           />
+
           <BotaoOpcao
             texto="kg"
             selecionado={tipoQuantidade === "kg"}
             aoPressionar={() => setTipoQuantidade("kg")}
           />
+
           <BotaoOpcao
             texto="litros"
             selecionado={tipoQuantidade === "litros"}
@@ -233,18 +240,21 @@ await addDoc(
           style={styles.input}
           placeholder="Validade (DD/MM/AAAA)"
           value={validade}
+          editable={!carregando}
           onChangeText={formatarData}
           keyboardType="numeric"
           maxLength={10}
         />
 
         <Text style={styles.label}>Origem</Text>
+
         <View style={styles.opcoes}>
           <BotaoOpcao
             texto="Doação"
             selecionado={origem === "Doação"}
             aoPressionar={() => setOrigem("Doação")}
           />
+
           <BotaoOpcao
             texto="Compra"
             selecionado={origem === "Compra"}
@@ -252,9 +262,26 @@ await addDoc(
           />
         </View>
 
-        <Pressable style={styles.botaoSalvar} onPress={cadastrarAlimento}>
-          <Text style={styles.textoBotao}>Cadastrar</Text>
+        <Pressable
+          disabled={carregando}
+          style={[
+            styles.botaoSalvar,
+            carregando && { opacity: 0.6 },
+          ]}
+          onPress={cadastrarAlimento}
+        >
+          {carregando ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.textoBotao}>Cadastrar</Text>
+          )}
         </Pressable>
+
+        {carregando && (
+          <Text style={{ textAlign: "center", marginTop: 10 }}>
+            Salvando alimento...
+          </Text>
+        )}
       </View>
     </ScrollView>
   );

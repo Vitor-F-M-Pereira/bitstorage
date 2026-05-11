@@ -8,10 +8,9 @@ import {
   onSnapshot,
   updateDoc,
 } from "firebase/firestore";
-
 import React, { useEffect, useState } from "react";
-
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -23,10 +22,23 @@ import {
 } from "react-native";
 
 import { auth, db } from "../../services/firebaseConfig";
-import { styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/estoqueStyles";
 
 const categorias = [
   "Todas",
+  "Grãos e cereais",
+  "Massas",
+  "Enlatados e conservas",
+  "Leites e derivados",
+  "Carnes e proteínas",
+  "Hortifruti",
+  "Bebidas",
+  "Produtos de limpeza",
+  "Higiene pessoal",
+  "Outros",
+];
+
+const categoriasEdicao = [
   "Grãos e cereais",
   "Massas",
   "Enlatados e conservas",
@@ -47,8 +59,8 @@ export default function Estoque() {
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
   const [filtroStatus, setFiltroStatus] = useState("todos");
 
-  const [modoEdicao, setModoEdicao] = useState(false);
   const [idEditando, setIdEditando] = useState(null);
+  const [modalEdicaoVisivel, setModalEdicaoVisivel] = useState(false);
 
   const [nome, setNome] = useState("");
   const [categoria, setCategoria] = useState("Grãos e cereais");
@@ -62,6 +74,9 @@ export default function Estoque() {
   const [itemSelecionado, setItemSelecionado] = useState(null);
   const [valorMovimentacao, setValorMovimentacao] = useState("");
 
+  const [carregandoAcao, setCarregandoAcao] = useState(false);
+  const [idProcessando, setIdProcessando] = useState(null);
+
   const ehCozinheiro = tipoUsuario === "cozinheiro";
 
   useEffect(() => {
@@ -74,7 +89,9 @@ export default function Estoque() {
 
         if (usuarioSnap.exists()) {
           const dados = usuarioSnap.data();
-          setTipoUsuario(String(dados.tipoUsuario || "cozinheiro").toLowerCase());  
+          setTipoUsuario(
+            String(dados.tipoUsuario || "cozinheiro").toLowerCase()
+          );
         } else {
           setTipoUsuario("cozinheiro");
         }
@@ -166,13 +183,12 @@ export default function Estoque() {
 
     if (dias === null) return "Data inválida";
     if (dias < 0) return "Vencido";
-    if (dias < 7) return "Próximo do vencimento";
+    if (dias < 7) return "Usar em breve";
 
     return "Dentro do prazo";
   };
 
   const limparEdicao = () => {
-    setModoEdicao(false);
     setIdEditando(null);
     setNome("");
     setCategoria("Grãos e cereais");
@@ -180,30 +196,47 @@ export default function Estoque() {
     setTipoQuantidade("unidades");
     setValidade("");
     setOrigem("Cadastro interno");
+    setModalEdicaoVisivel(false);
   };
 
   const editarAlimento = (item) => {
-    setModoEdicao(true);
+    if (carregandoAcao) return;
+
     setIdEditando(item.id);
-    setNome(item.nome);
+    setNome(item.nome || "");
     setCategoria(item.categoria || "Grãos e cereais");
-    setQuantidade(String(item.quantidade));
+    setQuantidade(String(item.quantidade || ""));
     setTipoQuantidade(item.tipoQuantidade || "unidades");
-    setValidade(item.validade);
+    setValidade(item.validade || "");
     setOrigem(item.origem || "Cadastro interno");
+
+    setModalEdicaoVisivel(true);
   };
 
   const salvarEdicao = async () => {
-    if (!idEditando) return;
+    if (!idEditando || carregandoAcao) return;
 
     if (!nome || !quantidade || !validade) {
       Alert.alert("Atenção", "Preencha nome, quantidade e validade.");
       return;
     }
 
+    if (isNaN(Number(quantidade)) || Number(quantidade) < 0) {
+      Alert.alert("Atenção", "Digite uma quantidade válida.");
+      return;
+    }
+
+    if (!converterDataBrasileira(validade)) {
+      Alert.alert("Atenção", "Digite a validade no formato DD/MM/AAAA.");
+      return;
+    }
+
     try {
+      setCarregandoAcao(true);
+      setIdProcessando(idEditando);
+
       await updateDoc(doc(db, "alimentos", idEditando), {
-        nome,
+        nome: nome.trim(),
         categoria,
         quantidade: Number(quantidade),
         tipoQuantidade,
@@ -212,17 +245,25 @@ export default function Estoque() {
         atualizadoEm: new Date(),
       });
 
-      Alert.alert("Sucesso", "Alimento atualizado!");
+      Alert.alert("Sucesso", "Item atualizado com sucesso!");
       limparEdicao();
     } catch (error) {
       console.log(error);
-      Alert.alert("Erro", "Não foi possível atualizar.");
+      Alert.alert("Erro", "Não foi possível atualizar o item.");
+    } finally {
+      setCarregandoAcao(false);
+      setIdProcessando(null);
     }
   };
 
   const abrirModalMovimentacao = (item, tipo) => {
+    if (carregandoAcao) return;
+
     if (!ehCozinheiro) {
-      Alert.alert("Acesso negado", "Somente cozinheiros podem registrar entrada e saída.");
+      Alert.alert(
+        "Acesso negado",
+        "Somente cozinheiros podem alterar a quantidade do estoque."
+      );
       return;
     }
 
@@ -233,6 +274,8 @@ export default function Estoque() {
   };
 
   const fecharModalMovimentacao = () => {
+    if (carregandoAcao) return;
+
     setModalVisivel(false);
     setItemSelecionado(null);
     setTipoMovimentacao("");
@@ -241,8 +284,13 @@ export default function Estoque() {
 
   const registrarMovimentacao = async () => {
     try {
+      if (carregandoAcao) return;
+
       if (!ehCozinheiro) {
-        Alert.alert("Acesso negado", "Somente cozinheiros podem registrar movimentações.");
+        Alert.alert(
+          "Acesso negado",
+          "Somente cozinheiros podem registrar alterações no estoque."
+        );
         fecharModalMovimentacao();
         return;
       }
@@ -263,12 +311,18 @@ export default function Estoque() {
         novaQuantidade += quantidadeMovimentada;
       } else {
         if (quantidadeMovimentada > quantidadeAtual) {
-          Alert.alert("Erro", "A saída não pode ser maior que o estoque.");
+          Alert.alert(
+            "Atenção",
+            "Não é possível consumir mais do que existe no estoque."
+          );
           return;
         }
 
         novaQuantidade -= quantidadeMovimentada;
       }
+
+      setCarregandoAcao(true);
+      setIdProcessando(itemSelecionado.id);
 
       await updateDoc(doc(db, "alimentos", itemSelecionado.id), {
         quantidade: novaQuantidade,
@@ -287,21 +341,62 @@ export default function Estoque() {
         data: new Date(),
       });
 
-      Alert.alert("Sucesso", "Movimentação registrada!");
-      fecharModalMovimentacao();
+      Alert.alert(
+        "Sucesso",
+        tipoMovimentacao === "entrada"
+          ? "Quantidade adicionada ao estoque!"
+          : "Consumo registrado com sucesso!"
+      );
+
+      setModalVisivel(false);
+      setItemSelecionado(null);
+      setTipoMovimentacao("");
+      setValorMovimentacao("");
     } catch (error) {
       console.log(error);
-      Alert.alert("Erro", "Não foi possível registrar movimentação.");
+      Alert.alert("Erro", "Não foi possível salvar esta alteração.");
+    } finally {
+      setCarregandoAcao(false);
+      setIdProcessando(null);
     }
+  };
+
+  const confirmarExclusao = (item) => {
+    if (carregandoAcao) return;
+
+    Alert.alert(
+      "Confirmar exclusão",
+      `Tem certeza que deseja excluir "${item.nome}" do estoque?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Excluir item",
+          style: "destructive",
+          onPress: () => excluirAlimento(item.id),
+        },
+      ]
+    );
   };
 
   const excluirAlimento = async (id) => {
     try {
+      if (carregandoAcao) return;
+
+      setCarregandoAcao(true);
+      setIdProcessando(id);
+
       await deleteDoc(doc(db, "alimentos", id));
-      Alert.alert("Sucesso", "Alimento excluído!");
+
+      Alert.alert("Sucesso", "Item excluído do estoque!");
     } catch (error) {
       console.log(error);
-      Alert.alert("Erro", "Não foi possível excluir.");
+      Alert.alert("Erro", "Não foi possível excluir o item.");
+    } finally {
+      setCarregandoAcao(false);
+      setIdProcessando(null);
     }
   };
 
@@ -317,7 +412,7 @@ export default function Estoque() {
     let passaStatus = true;
 
     if (filtroStatus === "proximos") {
-      passaStatus = status === "Próximo do vencimento";
+      passaStatus = status === "Usar em breve";
     }
 
     if (filtroStatus === "vencidos") {
@@ -333,8 +428,13 @@ export default function Estoque() {
 
   const BotaoOpcao = ({ texto, selecionado, aoPressionar }) => (
     <Pressable
+      disabled={carregandoAcao}
       onPress={aoPressionar}
-      style={[styles.opcao, selecionado && styles.opcaoSelecionada]}
+      style={[
+        styles.opcao,
+        selecionado && styles.opcaoSelecionada,
+        carregandoAcao && { opacity: 0.6 },
+      ]}
     >
       <Text
         style={[
@@ -350,13 +450,14 @@ export default function Estoque() {
   const renderItem = ({ item }) => {
     const status = calcularStatusVencimento(item.validade);
     const dias = calcularDiasRestantes(item.validade);
+    const processandoEsteItem = carregandoAcao && idProcessando === item.id;
 
     return (
       <View
         style={[
           styles.card,
           status === "Vencido" && styles.cardVencido,
-          status === "Próximo do vencimento" && styles.cardProximo,
+          status === "Usar em breve" && styles.cardProximo,
           status === "Dentro do prazo" && styles.cardNormal,
         ]}
       >
@@ -365,7 +466,7 @@ export default function Estoque() {
         <Text>Categoria: {item.categoria}</Text>
 
         <Text>
-          Quantidade: {item.quantidade} {item.tipoQuantidade}
+          Quantidade disponível: {item.quantidade} {item.tipoQuantidade}
         </Text>
 
         <Text>Origem: {item.origem || "Cadastro interno"}</Text>
@@ -373,33 +474,50 @@ export default function Estoque() {
         <Text>Validade: {item.validade}</Text>
 
         {dias !== null && dias >= 0 && (
-          <Text>Faltam {dias} dia(s) para vencer</Text>
+          <Text>
+            {dias === 0
+              ? "Este item vence hoje."
+              : `Faltam ${dias} dia(s) para vencer.`}
+          </Text>
         )}
 
         <Text
           style={[
             styles.status,
             status === "Vencido" && styles.statusVencido,
-            status === "Próximo do vencimento" && styles.statusProximo,
+            status === "Usar em breve" && styles.statusProximo,
             status === "Dentro do prazo" && styles.statusNormal,
           ]}
         >
           {status}
         </Text>
 
+        {processandoEsteItem && (
+          <View style={{ marginTop: 10 }}>
+            <ActivityIndicator size="small" color={colors.principal} />
+            <Text style={{ textAlign: "center", marginTop: 5 }}>
+              Salvando alteração...
+            </Text>
+          </View>
+        )}
+
         <View style={styles.areaBotoes}>
           <Pressable
-            style={styles.botaoEditar}
+            disabled={carregandoAcao}
+            style={[styles.botaoEditar, carregandoAcao && { opacity: 0.6 }]}
             onPress={() => editarAlimento(item)}
           >
-            <Text style={styles.textoBotaoCard}>Editar</Text>
+            <Text style={styles.textoBotaoCard}>Editar item</Text>
           </Pressable>
 
           <Pressable
-            style={styles.botaoExcluir}
-            onPress={() => excluirAlimento(item.id)}
+            disabled={carregandoAcao}
+            style={[styles.botaoExcluir, carregandoAcao && { opacity: 0.6 }]}
+            onPress={() => confirmarExclusao(item)}
           >
-            <Text style={styles.textoBotaoCard}>Excluir</Text>
+            <Text style={styles.textoBotaoCard}>
+              {processandoEsteItem ? "Excluindo..." : "Excluir item"}
+            </Text>
           </Pressable>
         </View>
 
@@ -412,31 +530,37 @@ export default function Estoque() {
             }}
           >
             <Pressable
+              disabled={carregandoAcao}
               style={{
                 flex: 1,
-                backgroundColor: "#2e7d32",
+                backgroundColor: colors.sucesso,
                 padding: 15,
                 borderRadius: 12,
                 alignItems: "center",
+                opacity: carregandoAcao ? 0.6 : 1,
               }}
               onPress={() => abrirModalMovimentacao(item, "entrada")}
             >
               <Text style={{ color: "white", fontWeight: "bold" }}>
-                Entrada
+                Adicionar quantidade
               </Text>
             </Pressable>
 
             <Pressable
+              disabled={carregandoAcao}
               style={{
                 flex: 1,
-                backgroundColor: "#c62828",
+                backgroundColor: colors.alerta,
                 padding: 15,
                 borderRadius: 12,
                 alignItems: "center",
+                opacity: carregandoAcao ? 0.6 : 1,
               }}
               onPress={() => abrirModalMovimentacao(item, "saida")}
             >
-              <Text style={{ color: "white", fontWeight: "bold" }}>Saída</Text>
+              <Text style={{ color: "white", fontWeight: "bold" }}>
+                Registrar consumo
+              </Text>
             </Pressable>
           </View>
         )}
@@ -449,46 +573,9 @@ export default function Estoque() {
       <Text style={styles.titulo}>Estoque</Text>
 
       <Text style={styles.subtituloPrincipal}>
-        Consulta e controle dos itens
+        Consulte os alimentos cadastrados, veja a validade e acompanhe a
+        quantidade disponível.
       </Text>
-
-      {modoEdicao && (
-        <View style={styles.formulario}>
-          <Text style={styles.subtitulo}>Editar alimento</Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Nome do alimento"
-            value={nome}
-            onChangeText={setNome}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Quantidade"
-            value={quantidade}
-            onChangeText={setQuantidade}
-            keyboardType="numeric"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Validade (DD/MM/AAAA)"
-            value={validade}
-            onChangeText={formatarData}
-            keyboardType="numeric"
-            maxLength={10}
-          />
-
-          <Pressable style={styles.botaoSalvar} onPress={salvarEdicao}>
-            <Text style={styles.textoBotao}>Salvar alterações</Text>
-          </Pressable>
-
-          <Pressable style={styles.botaoCancelar} onPress={limparEdicao}>
-            <Text style={styles.textoCancelar}>Cancelar edição</Text>
-          </Pressable>
-        </View>
-      )}
 
       <Text style={styles.subtitulo}>Buscar alimento</Text>
 
@@ -496,6 +583,7 @@ export default function Estoque() {
         style={styles.input}
         placeholder="Digite o nome do alimento"
         value={busca}
+        editable={!carregandoAcao}
         onChangeText={setBusca}
       />
 
@@ -512,7 +600,7 @@ export default function Estoque() {
         ))}
       </View>
 
-      <Text style={styles.subtitulo}>Filtrar por vencimento</Text>
+      <Text style={styles.subtitulo}>Filtrar por validade</Text>
 
       <View style={styles.opcoes}>
         <BotaoOpcao
@@ -522,7 +610,7 @@ export default function Estoque() {
         />
 
         <BotaoOpcao
-          texto="Próximos"
+          texto="Usar em breve"
           selecionado={filtroStatus === "proximos"}
           aoPressionar={() => setFiltroStatus("proximos")}
         />
@@ -534,7 +622,7 @@ export default function Estoque() {
         />
 
         <BotaoOpcao
-          texto="Válidos"
+          texto="Dentro do prazo"
           selecionado={filtroStatus === "validos"}
           aoPressionar={() => setFiltroStatus("validos")}
         />
@@ -550,6 +638,171 @@ export default function Estoque() {
         }
       />
 
+      <Modal visible={modalEdicaoVisivel} transparent animationType="fade">
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 20,
+              padding: 20,
+              maxHeight: "90%",
+            }}
+          >
+            <ScrollView>
+              <Text
+                style={{
+                  fontSize: 22,
+                  fontWeight: "bold",
+                  marginBottom: 8,
+                  color: colors.texto,
+                }}
+              >
+                Editar item
+              </Text>
+
+              <Text
+                style={{
+                  color: colors.textoSuave,
+                  lineHeight: 22,
+                  marginBottom: 16,
+                }}
+              >
+                Altere as informações necessárias e salve para atualizar o
+                estoque.
+              </Text>
+
+              <Text style={styles.label}>Nome do alimento</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Nome do alimento"
+                value={nome}
+                editable={!carregandoAcao}
+                onChangeText={setNome}
+              />
+
+              <Text style={styles.label}>Categoria</Text>
+
+              <View style={styles.opcoes}>
+                {categoriasEdicao.map((item) => (
+                  <BotaoOpcao
+                    key={item}
+                    texto={item}
+                    selecionado={categoria === item}
+                    aoPressionar={() => setCategoria(item)}
+                  />
+                ))}
+              </View>
+
+              <Text style={styles.label}>Quantidade disponível</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Quantidade disponível"
+                value={quantidade}
+                editable={!carregandoAcao}
+                onChangeText={setQuantidade}
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.label}>Tipo de quantidade</Text>
+
+              <View style={styles.opcoes}>
+                <BotaoOpcao
+                  texto="unidades"
+                  selecionado={tipoQuantidade === "unidades"}
+                  aoPressionar={() => setTipoQuantidade("unidades")}
+                />
+
+                <BotaoOpcao
+                  texto="kg"
+                  selecionado={tipoQuantidade === "kg"}
+                  aoPressionar={() => setTipoQuantidade("kg")}
+                />
+
+                <BotaoOpcao
+                  texto="litros"
+                  selecionado={tipoQuantidade === "litros"}
+                  aoPressionar={() => setTipoQuantidade("litros")}
+                />
+              </View>
+
+              <Text style={styles.label}>Validade</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Validade (DD/MM/AAAA)"
+                value={validade}
+                editable={!carregandoAcao}
+                onChangeText={formatarData}
+                keyboardType="numeric"
+                maxLength={10}
+              />
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 10,
+                  marginTop: 10,
+                }}
+              >
+                <Pressable
+                  disabled={carregandoAcao}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.principal,
+                    padding: 15,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    opacity: carregandoAcao ? 0.6 : 1,
+                  }}
+                  onPress={salvarEdicao}
+                >
+                  {carregandoAcao ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: "white", fontWeight: "bold" }}>
+                      Salvar
+                    </Text>
+                  )}
+                </Pressable>
+
+                <Pressable
+                  disabled={carregandoAcao}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.secundarioClaro,
+                    padding: 15,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: colors.borda,
+                    opacity: carregandoAcao ? 0.6 : 1,
+                  }}
+                  onPress={limparEdicao}
+                >
+                  <Text
+                    style={{
+                      color: colors.secundario,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Cancelar
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={modalVisivel} transparent animationType="fade">
         <View
           style={{
@@ -561,7 +814,7 @@ export default function Estoque() {
         >
           <View
             style={{
-              backgroundColor: "white",
+              backgroundColor: colors.card,
               borderRadius: 20,
               padding: 20,
             }}
@@ -571,22 +824,32 @@ export default function Estoque() {
                 fontSize: 22,
                 fontWeight: "bold",
                 marginBottom: 10,
+                color: colors.texto,
               }}
             >
               {tipoMovimentacao === "entrada"
-                ? "Entrada de estoque"
-                : "Saída de estoque"}
+                ? "Adicionar quantidade"
+                : "Registrar consumo"}
             </Text>
 
-            <Text style={{ marginBottom: 15 }}>
-              Produto: {itemSelecionado?.nome}
+            <Text
+              style={{
+                marginBottom: 15,
+                color: colors.textoSuave,
+                lineHeight: 22,
+              }}
+            >
+              {tipoMovimentacao === "entrada"
+                ? `Informe a quantidade que chegou para o item "${itemSelecionado?.nome}".`
+                : `Informe a quantidade consumida do item "${itemSelecionado?.nome}".`}
             </Text>
 
             <TextInput
               style={styles.input}
-              placeholder="Quantidade"
+              placeholder="Digite a quantidade"
               keyboardType="numeric"
               value={valorMovimentacao}
+              editable={!carregandoAcao}
               onChangeText={setValorMovimentacao}
             />
 
@@ -598,31 +861,41 @@ export default function Estoque() {
               }}
             >
               <Pressable
+                disabled={carregandoAcao}
                 style={{
                   flex: 1,
-                  backgroundColor: "#1565c0",
+                  backgroundColor: colors.principal,
                   padding: 15,
                   borderRadius: 10,
                   alignItems: "center",
+                  opacity: carregandoAcao ? 0.6 : 1,
                 }}
                 onPress={registrarMovimentacao}
               >
-                <Text style={{ color: "white", fontWeight: "bold" }}>
-                  Confirmar
-                </Text>
+                {carregandoAcao ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: "white", fontWeight: "bold" }}>
+                    Confirmar
+                  </Text>
+                )}
               </Pressable>
 
               <Pressable
+                disabled={carregandoAcao}
                 style={{
                   flex: 1,
-                  backgroundColor: "#757575",
+                  backgroundColor: colors.secundarioClaro,
                   padding: 15,
                   borderRadius: 10,
                   alignItems: "center",
+                  borderWidth: 1,
+                  borderColor: colors.borda,
+                  opacity: carregandoAcao ? 0.6 : 1,
                 }}
                 onPress={fecharModalMovimentacao}
               >
-                <Text style={{ color: "white", fontWeight: "bold" }}>
+                <Text style={{ color: colors.secundario, fontWeight: "bold" }}>
                   Cancelar
                 </Text>
               </Pressable>

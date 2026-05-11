@@ -1,34 +1,44 @@
-import { collection, getDocs } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 
 import { db } from "../../services/firebaseConfig";
 import { styles } from "../../styles/estoqueStyles";
 
 export default function Alertas() {
   const [alimentos, setAlimentos] = useState([]);
-
-  const buscarAlimentos = async () => {
-    try {
-      const snapshot = await getDocs(collection(db, "alimentos"));
-      const lista = [];
-
-      snapshot.forEach((documento) => {
-        lista.push({
-          id: documento.id,
-          ...documento.data(),
-        });
-      });
-
-      setAlimentos(lista);
-    } catch (error) {
-      console.log(error);
-      Alert.alert("Erro", "Não foi possível carregar os alertas.");
-    }
-  };
+  const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
-    buscarAlimentos();
+    const unsubscribe = onSnapshot(
+      collection(db, "alimentos"),
+      (snapshot) => {
+        const lista = [];
+
+        snapshot.forEach((documento) => {
+          lista.push({
+            id: documento.id,
+            ...documento.data(),
+          });
+        });
+
+        setAlimentos(lista);
+        setCarregando(false);
+      },
+      (error) => {
+        console.log(error);
+        setCarregando(false);
+        Alert.alert("Erro", "Não foi possível carregar os alertas.");
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const converterDataBrasileira = (data) => {
@@ -41,7 +51,15 @@ export default function Alertas() {
     const mes = Number(partes[1]);
     const ano = Number(partes[2]);
 
-    if (!dia || !mes || !ano || dia < 1 || dia > 31 || mes < 1 || mes > 12) {
+    if (
+      !dia ||
+      !mes ||
+      !ano ||
+      dia < 1 ||
+      dia > 31 ||
+      mes < 1 ||
+      mes > 12
+    ) {
       return null;
     }
 
@@ -53,11 +71,13 @@ export default function Alertas() {
     hoje.setHours(0, 0, 0, 0);
 
     const dataConvertida = converterDataBrasileira(dataValidade);
+
     if (!dataConvertida) return null;
 
     dataConvertida.setHours(0, 0, 0, 0);
 
     const diferenca = dataConvertida - hoje;
+
     return Math.ceil(diferenca / (1000 * 60 * 60 * 24));
   };
 
@@ -71,12 +91,40 @@ export default function Alertas() {
     return dias !== null && dias < 0;
   });
 
+  if (carregando) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" />
+
+        <Text style={{ marginTop: 10, textAlign: "center" }}>
+          Carregando alertas...
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.titulo}>Alertas</Text>
+
       <Text style={styles.subtituloPrincipal}>
         Produtos vencidos ou próximos do vencimento
       </Text>
+
+      <View style={styles.card}>
+        <Text style={styles.nome}>Resumo dos alertas</Text>
+        <Text>Produtos próximos do vencimento: {proximos.length}</Text>
+        <Text>Produtos vencidos: {vencidos.length}</Text>
+      </View>
 
       <Text style={styles.subtitulo}>Próximos do vencimento</Text>
 
@@ -91,12 +139,15 @@ export default function Alertas() {
           return (
             <View key={item.id} style={[styles.card, styles.cardProximo]}>
               <Text style={styles.nome}>{item.nome}</Text>
+
               <Text>
                 Vence em {dias} dia(s) - {item.validade}
               </Text>
+
               <Text>
                 Quantidade: {item.quantidade} {item.tipoQuantidade}
               </Text>
+
               <Text>Categoria: {item.categoria}</Text>
             </View>
           );
@@ -111,10 +162,13 @@ export default function Alertas() {
         vencidos.map((item) => (
           <View key={item.id} style={[styles.card, styles.cardVencido]}>
             <Text style={styles.nome}>{item.nome}</Text>
+
             <Text>Validade: {item.validade}</Text>
+
             <Text>
               Quantidade: {item.quantidade} {item.tipoQuantidade}
             </Text>
+
             <Text>Categoria: {item.categoria}</Text>
           </View>
         ))

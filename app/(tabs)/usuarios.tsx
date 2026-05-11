@@ -1,21 +1,22 @@
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import {
-    collection,
-    deleteDoc,
-    doc,
-    onSnapshot,
-    setDoc,
-    updateDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    FlatList,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 import { db, secondaryAuth } from "../../services/firebaseConfig";
@@ -32,24 +33,36 @@ export default function Usuarios() {
   const [modoEdicao, setModoEdicao] = useState(false);
   const [idEditando, setIdEditando] = useState(null);
 
+  const [carregando, setCarregando] = useState(false);
+  const [idProcessando, setIdProcessando] = useState(null);
+
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "usuarios"), (snapshot) => {
-      const lista = [];
+    const unsubscribe = onSnapshot(
+      collection(db, "usuarios"),
+      (snapshot) => {
+        const lista = [];
 
-      snapshot.forEach((documento) => {
-        lista.push({
-          id: documento.id,
-          ...documento.data(),
+        snapshot.forEach((documento) => {
+          lista.push({
+            id: documento.id,
+            ...documento.data(),
+          });
         });
-      });
 
-      setUsuarios(lista);
-    });
+        setUsuarios(lista);
+      },
+      (error) => {
+        console.log(error);
+        Alert.alert("Erro", "Não foi possível carregar os usuários.");
+      }
+    );
 
     return () => unsubscribe();
   }, []);
 
   const limparCampos = () => {
+    if (carregando) return;
+
     setNome("");
     setEmail("");
     setSenha("");
@@ -58,18 +71,47 @@ export default function Usuarios() {
     setIdEditando(null);
   };
 
-  const cadastrarUsuario = async () => {
+  const validarCadastro = () => {
     if (!nome || !email || !senha) {
       Alert.alert("Atenção", "Preencha nome, e-mail e senha.");
-      return;
+      return false;
+    }
+
+    if (!email.includes("@")) {
+      Alert.alert("Atenção", "Digite um e-mail válido.");
+      return false;
     }
 
     if (senha.length < 6) {
       Alert.alert("Atenção", "A senha precisa ter pelo menos 6 caracteres.");
-      return;
+      return false;
     }
 
+    return true;
+  };
+
+  const validarEdicao = () => {
+    if (!nome || !email) {
+      Alert.alert("Atenção", "Preencha nome e e-mail.");
+      return false;
+    }
+
+    if (!email.includes("@")) {
+      Alert.alert("Atenção", "Digite um e-mail válido.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const cadastrarUsuario = async () => {
+    if (carregando) return;
+
+    if (!validarCadastro()) return;
+
     try {
+      setCarregando(true);
+
       const credencial = await createUserWithEmailAndPassword(
         secondaryAuth,
         email.trim(),
@@ -77,7 +119,7 @@ export default function Usuarios() {
       );
 
       await setDoc(doc(db, "usuarios", credencial.user.uid), {
-        nome,
+        nome: nome.trim(),
         email: email.trim(),
         tipoUsuario,
         criadoEm: new Date(),
@@ -90,10 +132,14 @@ export default function Usuarios() {
     } catch (error) {
       console.log(error);
       Alert.alert("Erro", "Não foi possível cadastrar o usuário.");
+    } finally {
+      setCarregando(false);
     }
   };
 
   const editarUsuario = (usuario) => {
+    if (carregando) return;
+
     setModoEdicao(true);
     setIdEditando(usuario.id);
     setNome(usuario.nome || "");
@@ -103,43 +149,85 @@ export default function Usuarios() {
   };
 
   const salvarEdicao = async () => {
-    if (!idEditando) return;
+    if (carregando || !idEditando) return;
 
-    if (!nome || !email) {
-      Alert.alert("Atenção", "Preencha nome e e-mail.");
-      return;
-    }
+    if (!validarEdicao()) return;
 
     try {
+      setCarregando(true);
+      setIdProcessando(idEditando);
+
       await updateDoc(doc(db, "usuarios", idEditando), {
-        nome,
+        nome: nome.trim(),
         email: email.trim(),
         tipoUsuario,
         atualizadoEm: new Date(),
       });
 
       Alert.alert("Sucesso", "Usuário atualizado!");
-      limparCampos();
+      setNome("");
+      setEmail("");
+      setSenha("");
+      setTipoUsuario("cozinheiro");
+      setModoEdicao(false);
+      setIdEditando(null);
     } catch (error) {
       console.log(error);
       Alert.alert("Erro", "Não foi possível atualizar o usuário.");
+    } finally {
+      setCarregando(false);
+      setIdProcessando(null);
     }
   };
 
+  const confirmarExclusao = (usuario) => {
+    if (carregando) return;
+
+    Alert.alert(
+      "Confirmar exclusão",
+      `Tem certeza que deseja remover "${usuario.nome}" da lista de usuários?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Excluir",
+          style: "destructive",
+          onPress: () => excluirUsuario(usuario.id),
+        },
+      ]
+    );
+  };
+
   const excluirUsuario = async (id) => {
+    if (carregando) return;
+
     try {
+      setCarregando(true);
+      setIdProcessando(id);
+
       await deleteDoc(doc(db, "usuarios", id));
+
       Alert.alert("Sucesso", "Usuário removido da lista!");
     } catch (error) {
       console.log(error);
       Alert.alert("Erro", "Não foi possível excluir o usuário.");
+    } finally {
+      setCarregando(false);
+      setIdProcessando(null);
     }
   };
 
   const BotaoTipo = ({ texto, valor }) => (
     <Pressable
+      disabled={carregando}
       onPress={() => setTipoUsuario(valor)}
-      style={[styles.opcao, tipoUsuario === valor && styles.opcaoSelecionada]}
+      style={[
+        styles.opcao,
+        tipoUsuario === valor && styles.opcaoSelecionada,
+        carregando && { opacity: 0.6 },
+      ]}
     >
       <Text
         style={[
@@ -152,26 +240,53 @@ export default function Usuarios() {
     </Pressable>
   );
 
-  const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <Text style={styles.nome}>{item.nome}</Text>
-      <Text>E-mail: {item.email}</Text>
-      <Text>Tipo: {item.tipoUsuario}</Text>
+  const renderItem = ({ item }) => {
+    const processandoEsteItem = carregando && idProcessando === item.id;
 
-      <View style={styles.areaBotoes}>
-        <Pressable style={styles.botaoEditar} onPress={() => editarUsuario(item)}>
-          <Text style={styles.textoBotaoCard}>Editar</Text>
-        </Pressable>
+    return (
+      <View style={styles.card}>
+        <Text style={styles.nome}>{item.nome}</Text>
 
-        <Pressable
-          style={styles.botaoExcluir}
-          onPress={() => excluirUsuario(item.id)}
-        >
-          <Text style={styles.textoBotaoCard}>Excluir</Text>
-        </Pressable>
+        <Text>E-mail: {item.email}</Text>
+        <Text>Tipo: {item.tipoUsuario}</Text>
+
+        {processandoEsteItem && (
+          <View style={{ marginTop: 10 }}>
+            <ActivityIndicator size="small" />
+            <Text style={{ textAlign: "center", marginTop: 5 }}>
+              Processando...
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.areaBotoes}>
+          <Pressable
+            disabled={carregando}
+            style={[
+              styles.botaoEditar,
+              carregando && { opacity: 0.6 },
+            ]}
+            onPress={() => editarUsuario(item)}
+          >
+            <Text style={styles.textoBotaoCard}>Editar</Text>
+          </Pressable>
+
+          <Pressable
+            disabled={carregando}
+            style={[
+              styles.botaoExcluir,
+              carregando && { opacity: 0.6 },
+            ]}
+            onPress={() => confirmarExclusao(item)}
+          >
+            <Text style={styles.textoBotaoCard}>
+              {processandoEsteItem ? "Excluindo..." : "Excluir"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <ScrollView style={styles.container}>
@@ -190,6 +305,7 @@ export default function Usuarios() {
           style={styles.input}
           placeholder="Nome"
           value={nome}
+          editable={!carregando}
           onChangeText={setNome}
         />
 
@@ -197,6 +313,7 @@ export default function Usuarios() {
           style={styles.input}
           placeholder="E-mail"
           value={email}
+          editable={!carregando}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
@@ -207,6 +324,7 @@ export default function Usuarios() {
             style={styles.input}
             placeholder="Senha"
             value={senha}
+            editable={!carregando}
             onChangeText={setSenha}
             secureTextEntry
           />
@@ -221,16 +339,37 @@ export default function Usuarios() {
         </View>
 
         <Pressable
-          style={styles.botaoSalvar}
+          disabled={carregando}
+          style={[
+            styles.botaoSalvar,
+            carregando && { opacity: 0.6 },
+          ]}
           onPress={modoEdicao ? salvarEdicao : cadastrarUsuario}
         >
-          <Text style={styles.textoBotao}>
-            {modoEdicao ? "Salvar alterações" : "Cadastrar usuário"}
-          </Text>
+          {carregando && !idProcessando ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.textoBotao}>
+              {modoEdicao ? "Salvar alterações" : "Cadastrar usuário"}
+            </Text>
+          )}
         </Pressable>
 
+        {carregando && !idProcessando && (
+          <Text style={{ textAlign: "center", marginTop: 10 }}>
+            {modoEdicao ? "Salvando alterações..." : "Cadastrando usuário..."}
+          </Text>
+        )}
+
         {modoEdicao && (
-          <Pressable style={styles.botaoCancelar} onPress={limparCampos}>
+          <Pressable
+            disabled={carregando}
+            style={[
+              styles.botaoCancelar,
+              carregando && { opacity: 0.6 },
+            ]}
+            onPress={limparCampos}
+          >
             <Text style={styles.textoCancelar}>Cancelar edição</Text>
           </Pressable>
         )}
