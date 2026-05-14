@@ -127,14 +127,42 @@ export default function Inicio() {
   const converterData = (data) => {
     if (!data) return null;
 
-    const partes = data.split("/");
-    if (partes.length !== 3) return null;
+    if (data?.toDate) {
+      return data.toDate();
+    }
 
-    const [dia, mes, ano] = partes.map(Number);
+    if (data instanceof Date) {
+      return data;
+    }
 
-    if (!dia || !mes || !ano) return null;
+    if (typeof data === "string" && data.includes("/")) {
+      const partes = data.split("/");
+      if (partes.length !== 3) return null;
 
-    return new Date(ano, mes - 1, dia);
+      const [dia, mes, ano] = partes.map(Number);
+
+      if (!dia || !mes || !ano) return null;
+
+      const dataConvertida = new Date(ano, mes - 1, dia);
+
+      if (
+        dataConvertida.getDate() !== dia ||
+        dataConvertida.getMonth() !== mes - 1 ||
+        dataConvertida.getFullYear() !== ano
+      ) {
+        return null;
+      }
+
+      return dataConvertida;
+    }
+
+    const dataConvertida = new Date(data);
+
+    if (isNaN(dataConvertida.getTime())) {
+      return null;
+    }
+
+    return dataConvertida;
   };
 
   const diasRestantes = (validade) => {
@@ -146,29 +174,58 @@ export default function Inicio() {
 
     data.setHours(0, 0, 0, 0);
 
-    const diff = data - hoje;
+    const diff = data.getTime() - hoje.getTime();
 
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const estoqueBaixo = (item) => {
+    const quantidade = Number(item.quantidade || 0);
+    const tipoQuantidade = String(item.tipoQuantidade || "").toLowerCase();
+
+    if (quantidade <= 0) return false;
+
+    if (tipoQuantidade === "kg" || tipoQuantidade === "litros") {
+      return quantidade <= 2;
+    }
+
+    return quantidade <= 5;
+  };
+
+  const formatarData = (data) => {
+    const dataConvertida = converterData(data);
+
+    if (!dataConvertida) {
+      return "Data não informada";
+    }
+
+    return dataConvertida.toLocaleDateString("pt-BR");
   };
 
   const dataAtual = new Date();
   const mesAtual = String(dataAtual.getMonth() + 1).padStart(2, "0");
   const anoAtual = String(dataAtual.getFullYear());
 
-  const proximos = alimentos.filter((item) => {
+  const itensVencendo = alimentos.filter((item) => {
     const dias = diasRestantes(item.validade);
-    return dias !== null && dias >= 0 && dias < 7;
+    return dias !== null && dias >= 0 && dias <= 7;
   });
 
-  const vencidos = alimentos.filter((item) => {
+  const itensVencidos = alimentos.filter((item) => {
     const dias = diasRestantes(item.validade);
     return dias !== null && dias < 0;
   });
 
-  const movimentacoesMes = movimentacoes.filter((item) => {
-    if (!item.data) return false;
+  const itensEstoqueBaixo = alimentos.filter((item) => estoqueBaixo(item));
 
-    const data = item.data.toDate ? item.data.toDate() : new Date(item.data);
+  const itensZerados = alimentos.filter(
+    (item) => Number(item.quantidade || 0) <= 0
+  );
+
+  const movimentacoesMes = movimentacoes.filter((item) => {
+    const data = converterData(item.data);
+
+    if (!data) return false;
 
     const mes = String(data.getMonth() + 1).padStart(2, "0");
     const ano = String(data.getFullYear());
@@ -183,6 +240,8 @@ export default function Inicio() {
   const saidasMes = movimentacoesMes.filter(
     (item) => item.tipo === "saida"
   ).length;
+
+  const ultimasMovimentacoes = movimentacoes.slice(0, 5);
 
   const ehAdministrador = tipoUsuario === "administrador";
   const ehCozinheiro = tipoUsuario === "cozinheiro";
@@ -258,6 +317,96 @@ export default function Inicio() {
     );
   };
 
+  const CardMovimentacao = ({ item }) => {
+    const ehEntrada = item.tipo === "entrada";
+
+    return (
+      <View
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: 16,
+          padding: 14,
+          marginBottom: 10,
+          borderWidth: 1,
+          borderColor: colors.borda,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "flex-start",
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "bold",
+                color: colors.texto,
+              }}
+            >
+              {item.nomeProduto || "Produto não informado"}
+            </Text>
+
+            <Text
+              style={{
+                color: colors.textoSuave,
+                marginTop: 4,
+              }}
+            >
+              {formatarData(item.data)}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: ehEntrada
+                ? colors.sucessoFundo
+                : colors.perigoFundo,
+              borderColor: ehEntrada ? colors.sucesso : colors.perigo,
+              borderWidth: 1,
+              paddingVertical: 5,
+              paddingHorizontal: 10,
+              borderRadius: 999,
+            }}
+          >
+            <Text
+              style={{
+                color: ehEntrada ? colors.sucesso : colors.perigo,
+                fontWeight: "bold",
+                fontSize: 12,
+              }}
+            >
+              {ehEntrada ? "Entrada" : "Saída"}
+            </Text>
+          </View>
+        </View>
+
+        <Text
+          style={{
+            marginTop: 8,
+            color: colors.texto,
+          }}
+        >
+          Quantidade: {item.quantidade || 0} {item.tipoQuantidade || "unidades"}
+        </Text>
+
+        {item.origem && (
+          <Text
+            style={{
+              color: colors.textoSuave,
+              marginTop: 4,
+            }}
+          >
+            Origem: {item.origem}
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   const BotaoAcao = ({ texto, descricao, rota }) => (
     <Pressable
       onPress={() => router.push(rota)}
@@ -298,12 +447,12 @@ export default function Inicio() {
       <Text style={styles.titulo}>Olá, {nomeUsuario || "bem-vindo"}!</Text>
 
       <Text style={styles.subtituloPrincipal}>
-        Aqui está um resumo simples da despensa da Casa da Criança.
+        Aqui está um resumo da despensa da Casa da Criança.
       </Text>
 
       {carregandoDados ? (
         <View style={styles.formulario}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="large" color={colors.principal} />
 
           <Text style={{ textAlign: "center", marginTop: 10 }}>
             Carregando dados do estoque...
@@ -321,17 +470,31 @@ export default function Inicio() {
           />
 
           <CardResumo
-            titulo="Próximos do vencimento"
-            valor={proximos.length}
-            descricao="Itens que vencem em menos de 7 dias."
-            tipo="alerta"
+            titulo="Produtos vencidos"
+            valor={itensVencidos.length}
+            descricao="Itens que já passaram da data de validade."
+            tipo={itensVencidos.length > 0 ? "perigo" : "ok"}
           />
 
           <CardResumo
-            titulo="Produtos vencidos"
-            valor={vencidos.length}
-            descricao="Itens que precisam de atenção imediata."
-            tipo={vencidos.length > 0 ? "perigo" : "ok"}
+            titulo="Vencem em até 7 dias"
+            valor={itensVencendo.length}
+            descricao="Produtos que precisam ser usados ou avaliados rapidamente."
+            tipo={itensVencendo.length > 0 ? "alerta" : "ok"}
+          />
+
+          <CardResumo
+            titulo="Estoque baixo"
+            valor={itensEstoqueBaixo.length}
+            descricao="Itens que ainda existem, mas estão com pouca quantidade."
+            tipo={itensEstoqueBaixo.length > 0 ? "alerta" : "ok"}
+          />
+
+          <CardResumo
+            titulo="Itens zerados"
+            valor={itensZerados.length}
+            descricao="Produtos que não possuem quantidade disponível no estoque."
+            tipo={itensZerados.length > 0 ? "perigo" : "ok"}
           />
 
           {(ehAdministrador || ehCozinheiro) && (
@@ -410,6 +573,18 @@ export default function Inicio() {
             </>
           )}
 
+          <Text style={styles.subtitulo}>Últimas movimentações</Text>
+
+          {ultimasMovimentacoes.length === 0 ? (
+            <Text style={styles.listaVazia}>
+              Nenhuma movimentação registrada ainda.
+            </Text>
+          ) : (
+            ultimasMovimentacoes.map((item) => (
+              <CardMovimentacao key={item.id} item={item} />
+            ))
+          )}
+
           <Text style={styles.subtitulo}>Ações principais</Text>
 
           {(ehAdministrador || ehCozinheiro) && (
@@ -428,7 +603,7 @@ export default function Inicio() {
 
               <BotaoAcao
                 texto="Ver alertas"
-                descricao="Conferir produtos vencidos ou próximos do vencimento."
+                descricao="Conferir produtos vencidos, zerados ou próximos do vencimento."
                 rota="/alertas"
               />
             </>
@@ -438,7 +613,7 @@ export default function Inicio() {
             <>
               <BotaoAcao
                 texto="Histórico mensal"
-                descricao="Acompanhar entradas, saídas e movimentações do estoque."
+                descricao="Acompanhar entradas, saídas, compras e doações do estoque."
                 rota="/historico"
               />
 
@@ -449,23 +624,6 @@ export default function Inicio() {
               />
             </>
           )}
-
-          {!ehAdministrador && !ehCozinheiro && (
-            <View style={styles.formulario}>
-              <Text style={styles.subtitulo}>Área do doador</Text>
-
-              <Text
-                style={{
-                  color: colors.textoSuave,
-                  lineHeight: 22,
-                  fontSize: 15,
-                }}
-              >
-                Em breve, esta área poderá mostrar os itens que a ONG mais
-                precisa receber como doação.
-              </Text>
-            </View>
-          )}
         </>
       )}
 
@@ -475,7 +633,7 @@ export default function Inicio() {
         onPress={sair}
       >
         {saindo ? (
-          <ActivityIndicator />
+          <ActivityIndicator color={colors.principal} />
         ) : (
           <Text style={styles.textoCancelar}>Sair da conta</Text>
         )}

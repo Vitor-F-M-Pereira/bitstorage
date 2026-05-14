@@ -1,5 +1,10 @@
 import { router } from "expo-router";
-import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,7 +16,7 @@ import {
   View,
 } from "react-native";
 
-import { auth } from "../services/firebaseConfig";
+import { auth, db } from "../services/firebaseConfig";
 import { styles } from "../styles/estoqueStyles";
 
 export default function Login() {
@@ -21,10 +26,39 @@ export default function Login() {
   const [verificandoSessao, setVerificandoSessao] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usuario) => {
-      if (usuario) {
+    const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
+      if (!usuario) {
+        setVerificandoSessao(false);
+        return;
+      }
+
+      try {
+        const usuarioRef = doc(db, "usuarios", usuario.uid);
+        const usuarioSnap = await getDoc(usuarioRef);
+
+        if (!usuarioSnap.exists()) {
+          await signOut(auth);
+          setVerificandoSessao(false);
+          return;
+        }
+
+        const dados = usuarioSnap.data();
+        const estaAtivo = dados.ativo !== false;
+
+        if (!estaAtivo) {
+          await signOut(auth);
+          Alert.alert(
+            "Acesso bloqueado",
+            "Seu usuário está desativado. Procure um administrador."
+          );
+          setVerificandoSessao(false);
+          return;
+        }
+
         router.replace("/(tabs)");
-      } else {
+      } catch (error) {
+        console.log(error);
+        await signOut(auth);
         setVerificandoSessao(false);
       }
     });
@@ -35,7 +69,7 @@ export default function Login() {
   const entrar = async () => {
     if (carregando) return;
 
-    if (!email || !senha) {
+    if (!email.trim() || !senha.trim()) {
       Alert.alert("Atenção", "Preencha e-mail e senha.");
       return;
     }
@@ -43,7 +77,39 @@ export default function Login() {
     try {
       setCarregando(true);
 
-      await signInWithEmailAndPassword(auth, email.trim(), senha);
+      const credencial = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        senha
+      );
+
+      const usuarioRef = doc(db, "usuarios", credencial.user.uid);
+      const usuarioSnap = await getDoc(usuarioRef);
+
+      if (!usuarioSnap.exists()) {
+        await signOut(auth);
+
+        Alert.alert(
+          "Acesso não autorizado",
+          "Este usuário não possui cadastro no sistema."
+        );
+
+        return;
+      }
+
+      const dados = usuarioSnap.data();
+      const estaAtivo = dados.ativo !== false;
+
+      if (!estaAtivo) {
+        await signOut(auth);
+
+        Alert.alert(
+          "Acesso bloqueado",
+          "Seu usuário está desativado. Procure um administrador."
+        );
+
+        return;
+      }
 
       router.replace("/(tabs)");
     } catch (error) {
@@ -64,6 +130,7 @@ export default function Login() {
         }}
       >
         <ActivityIndicator size="large" />
+
         <Text style={{ marginTop: 10 }}>Verificando sessão...</Text>
       </View>
     );
@@ -101,10 +168,7 @@ export default function Login() {
 
         <Pressable
           disabled={carregando}
-          style={[
-            styles.botaoSalvar,
-            carregando && { opacity: 0.6 },
-          ]}
+          style={[styles.botaoSalvar, carregando && { opacity: 0.6 }]}
           onPress={entrar}
         >
           {carregando ? (

@@ -1,7 +1,6 @@
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import {
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   setDoc,
@@ -33,6 +32,8 @@ export default function Usuarios() {
   const [modoEdicao, setModoEdicao] = useState(false);
   const [idEditando, setIdEditando] = useState(null);
 
+  const [filtroStatus, setFiltroStatus] = useState("ativos");
+
   const [carregando, setCarregando] = useState(false);
   const [idProcessando, setIdProcessando] = useState(null);
 
@@ -43,10 +44,20 @@ export default function Usuarios() {
         const lista = [];
 
         snapshot.forEach((documento) => {
+          const dados = documento.data();
+
           lista.push({
             id: documento.id,
-            ...documento.data(),
+            ativo: dados.ativo !== false,
+            ...dados,
           });
+        });
+
+        lista.sort((a, b) => {
+          const nomeA = String(a.nome || "").toLowerCase();
+          const nomeB = String(b.nome || "").toLowerCase();
+
+          return nomeA.localeCompare(nomeB);
         });
 
         setUsuarios(lista);
@@ -72,7 +83,7 @@ export default function Usuarios() {
   };
 
   const validarCadastro = () => {
-    if (!nome || !email || !senha) {
+    if (!nome.trim() || !email.trim() || !senha.trim()) {
       Alert.alert("Atenção", "Preencha nome, e-mail e senha.");
       return false;
     }
@@ -91,13 +102,8 @@ export default function Usuarios() {
   };
 
   const validarEdicao = () => {
-    if (!nome || !email) {
-      Alert.alert("Atenção", "Preencha nome e e-mail.");
-      return false;
-    }
-
-    if (!email.includes("@")) {
-      Alert.alert("Atenção", "Digite um e-mail válido.");
+    if (!nome.trim()) {
+      Alert.alert("Atenção", "Preencha o nome do usuário.");
       return false;
     }
 
@@ -122,6 +128,7 @@ export default function Usuarios() {
         nome: nome.trim(),
         email: email.trim(),
         tipoUsuario,
+        ativo: true,
         criadoEm: new Date(),
       });
 
@@ -159,18 +166,12 @@ export default function Usuarios() {
 
       await updateDoc(doc(db, "usuarios", idEditando), {
         nome: nome.trim(),
-        email: email.trim(),
         tipoUsuario,
         atualizadoEm: new Date(),
       });
 
       Alert.alert("Sucesso", "Usuário atualizado!");
-      setNome("");
-      setEmail("");
-      setSenha("");
-      setTipoUsuario("cozinheiro");
-      setModoEdicao(false);
-      setIdEditando(null);
+      limparCampos();
     } catch (error) {
       console.log(error);
       Alert.alert("Erro", "Não foi possível atualizar o usuário.");
@@ -180,39 +181,49 @@ export default function Usuarios() {
     }
   };
 
-  const confirmarExclusao = (usuario) => {
+  const confirmarAlteracaoStatus = (usuario) => {
     if (carregando) return;
 
+    const estaAtivo = usuario.ativo !== false;
+
     Alert.alert(
-      "Confirmar exclusão",
-      `Tem certeza que deseja remover "${usuario.nome}" da lista de usuários?`,
+      estaAtivo ? "Desativar usuário" : "Reativar usuário",
+      estaAtivo
+        ? `Deseja desativar "${usuario.nome}"? O usuário não deve mais acessar o sistema.`
+        : `Deseja reativar "${usuario.nome}"? O usuário voltará a aparecer como ativo.`,
       [
         {
           text: "Cancelar",
           style: "cancel",
         },
         {
-          text: "Excluir",
-          style: "destructive",
-          onPress: () => excluirUsuario(usuario.id),
+          text: estaAtivo ? "Desativar" : "Reativar",
+          style: estaAtivo ? "destructive" : "default",
+          onPress: () => alterarStatusUsuario(usuario.id, !estaAtivo),
         },
       ]
     );
   };
 
-  const excluirUsuario = async (id) => {
+  const alterarStatusUsuario = async (id, novoStatus) => {
     if (carregando) return;
 
     try {
       setCarregando(true);
       setIdProcessando(id);
 
-      await deleteDoc(doc(db, "usuarios", id));
+      await updateDoc(doc(db, "usuarios", id), {
+        ativo: novoStatus,
+        atualizadoEm: new Date(),
+      });
 
-      Alert.alert("Sucesso", "Usuário removido da lista!");
+      Alert.alert(
+        "Sucesso",
+        novoStatus ? "Usuário reativado!" : "Usuário desativado!"
+      );
     } catch (error) {
       console.log(error);
-      Alert.alert("Erro", "Não foi possível excluir o usuário.");
+      Alert.alert("Erro", "Não foi possível alterar o status do usuário.");
     } finally {
       setCarregando(false);
       setIdProcessando(null);
@@ -240,8 +251,39 @@ export default function Usuarios() {
     </Pressable>
   );
 
+  const BotaoFiltroStatus = ({ texto, valor }) => (
+    <Pressable
+      disabled={carregando}
+      onPress={() => setFiltroStatus(valor)}
+      style={[
+        styles.opcao,
+        filtroStatus === valor && styles.opcaoSelecionada,
+        carregando && { opacity: 0.6 },
+      ]}
+    >
+      <Text
+        style={[
+          styles.textoOpcao,
+          filtroStatus === valor && styles.textoOpcaoSelecionada,
+        ]}
+      >
+        {texto}
+      </Text>
+    </Pressable>
+  );
+
+  const usuariosFiltrados = usuarios.filter((usuario) => {
+    const estaAtivo = usuario.ativo !== false;
+
+    if (filtroStatus === "ativos") return estaAtivo;
+    if (filtroStatus === "inativos") return !estaAtivo;
+
+    return true;
+  });
+
   const renderItem = ({ item }) => {
     const processandoEsteItem = carregando && idProcessando === item.id;
+    const estaAtivo = item.ativo !== false;
 
     return (
       <View style={styles.card}>
@@ -249,10 +291,12 @@ export default function Usuarios() {
 
         <Text>E-mail: {item.email}</Text>
         <Text>Tipo: {item.tipoUsuario}</Text>
+        <Text>Status: {estaAtivo ? "Ativo" : "Inativo"}</Text>
 
         {processandoEsteItem && (
           <View style={{ marginTop: 10 }}>
             <ActivityIndicator size="small" />
+
             <Text style={{ textAlign: "center", marginTop: 5 }}>
               Processando...
             </Text>
@@ -262,10 +306,7 @@ export default function Usuarios() {
         <View style={styles.areaBotoes}>
           <Pressable
             disabled={carregando}
-            style={[
-              styles.botaoEditar,
-              carregando && { opacity: 0.6 },
-            ]}
+            style={[styles.botaoEditar, carregando && { opacity: 0.6 }]}
             onPress={() => editarUsuario(item)}
           >
             <Text style={styles.textoBotaoCard}>Editar</Text>
@@ -273,14 +314,15 @@ export default function Usuarios() {
 
           <Pressable
             disabled={carregando}
-            style={[
-              styles.botaoExcluir,
-              carregando && { opacity: 0.6 },
-            ]}
-            onPress={() => confirmarExclusao(item)}
+            style={[styles.botaoExcluir, carregando && { opacity: 0.6 }]}
+            onPress={() => confirmarAlteracaoStatus(item)}
           >
             <Text style={styles.textoBotaoCard}>
-              {processandoEsteItem ? "Excluindo..." : "Excluir"}
+              {processandoEsteItem
+                ? "Processando..."
+                : estaAtivo
+                ? "Desativar"
+                : "Reativar"}
             </Text>
           </Pressable>
         </View>
@@ -293,7 +335,7 @@ export default function Usuarios() {
       <Text style={styles.titulo}>Usuários</Text>
 
       <Text style={styles.subtituloPrincipal}>
-        Cadastro e controle de contas do sistema
+        Cadastro e controle de contas internas do sistema
       </Text>
 
       <View style={styles.formulario}>
@@ -310,14 +352,28 @@ export default function Usuarios() {
         />
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, modoEdicao && { opacity: 0.6 }]}
           placeholder="E-mail"
           value={email}
-          editable={!carregando}
+          editable={!carregando && !modoEdicao}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
         />
+
+        {modoEdicao && (
+          <Text
+            style={{
+              marginTop: -6,
+              marginBottom: 10,
+              color: "#777",
+              fontSize: 13,
+            }}
+          >
+            O e-mail não é alterado nesta tela para evitar conflito com o
+            Firebase Authentication.
+          </Text>
+        )}
 
         {!modoEdicao && (
           <TextInput
@@ -335,15 +391,11 @@ export default function Usuarios() {
         <View style={styles.opcoes}>
           <BotaoTipo texto="Administrador" valor="administrador" />
           <BotaoTipo texto="Cozinheiro" valor="cozinheiro" />
-          <BotaoTipo texto="Doador" valor="doador" />
         </View>
 
         <Pressable
           disabled={carregando}
-          style={[
-            styles.botaoSalvar,
-            carregando && { opacity: 0.6 },
-          ]}
+          style={[styles.botaoSalvar, carregando && { opacity: 0.6 }]}
           onPress={modoEdicao ? salvarEdicao : cadastrarUsuario}
         >
           {carregando && !idProcessando ? (
@@ -364,10 +416,7 @@ export default function Usuarios() {
         {modoEdicao && (
           <Pressable
             disabled={carregando}
-            style={[
-              styles.botaoCancelar,
-              carregando && { opacity: 0.6 },
-            ]}
+            style={[styles.botaoCancelar, carregando && { opacity: 0.6 }]}
             onPress={limparCampos}
           >
             <Text style={styles.textoCancelar}>Cancelar edição</Text>
@@ -375,15 +424,23 @@ export default function Usuarios() {
         )}
       </View>
 
+      <Text style={styles.subtitulo}>Filtrar usuários</Text>
+
+      <View style={styles.opcoes}>
+        <BotaoFiltroStatus texto="Ativos" valor="ativos" />
+        <BotaoFiltroStatus texto="Inativos" valor="inativos" />
+        <BotaoFiltroStatus texto="Todos" valor="todos" />
+      </View>
+
       <Text style={styles.subtitulo}>Usuários cadastrados</Text>
 
       <FlatList
-        data={usuarios}
+        data={usuariosFiltrados}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         scrollEnabled={false}
         ListEmptyComponent={
-          <Text style={styles.listaVazia}>Nenhum usuário cadastrado.</Text>
+          <Text style={styles.listaVazia}>Nenhum usuário encontrado.</Text>
         }
       />
     </ScrollView>

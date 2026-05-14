@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, router } from "expo-router";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Alert, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { auth, db } from "../../services/firebaseConfig";
@@ -17,6 +17,7 @@ export default function TabLayout() {
     const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
       if (!usuario) {
         router.replace("/login");
+        setCarregando(false);
         return;
       }
 
@@ -24,17 +25,36 @@ export default function TabLayout() {
         const usuarioRef = doc(db, "usuarios", usuario.uid);
         const usuarioSnap = await getDoc(usuarioRef);
 
-        if (usuarioSnap.exists()) {
-          const dados = usuarioSnap.data();
-          setTipoUsuario(
-            String(dados.tipoUsuario || "cozinheiro").toLowerCase()
-          );
-        } else {
-          setTipoUsuario("cozinheiro");
+        if (!usuarioSnap.exists()) {
+          await signOut(auth);
+          router.replace("/login");
+          setCarregando(false);
+          return;
         }
+
+        const dados = usuarioSnap.data();
+        const estaAtivo = dados.ativo !== false;
+
+        if (!estaAtivo) {
+          await signOut(auth);
+
+          Alert.alert(
+            "Acesso bloqueado",
+            "Seu usuário está desativado. Procure um administrador."
+          );
+
+          router.replace("/login");
+          setCarregando(false);
+          return;
+        }
+
+        setTipoUsuario(
+          String(dados.tipoUsuario || "cozinheiro").toLowerCase()
+        );
       } catch (error) {
         console.log(error);
-        setTipoUsuario("cozinheiro");
+        await signOut(auth);
+        router.replace("/login");
       } finally {
         setCarregando(false);
       }
@@ -60,6 +80,7 @@ export default function TabLayout() {
 
   const ehAdministrador = tipoUsuario === "administrador";
   const ehCozinheiro = tipoUsuario === "cozinheiro";
+  const podeAcessarAreaInterna = ehAdministrador || ehCozinheiro;
 
   return (
     <Tabs
@@ -106,7 +127,7 @@ export default function TabLayout() {
         name="cadastro"
         options={{
           title: "Cadastro",
-          href: ehAdministrador || ehCozinheiro ? undefined : null,
+          href: podeAcessarAreaInterna ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="add-circle-outline" size={size} color={color} />
           ),
@@ -117,7 +138,7 @@ export default function TabLayout() {
         name="estoque"
         options={{
           title: "Estoque",
-          href: ehAdministrador || ehCozinheiro ? undefined : null,
+          href: podeAcessarAreaInterna ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cube-outline" size={size} color={color} />
           ),
@@ -128,7 +149,7 @@ export default function TabLayout() {
         name="alertas"
         options={{
           title: "Alertas",
-          href: ehAdministrador || ehCozinheiro ? undefined : null,
+          href: podeAcessarAreaInterna ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="notifications-outline" size={size} color={color} />
           ),
