@@ -145,8 +145,6 @@ export default function TabLayout() {
         }}
       />
 
-      
-
       <Tabs.Screen
         name="alertas"
         options={{
@@ -176,6 +174,17 @@ export default function TabLayout() {
           href: ehAdministrador ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="dados-simulados"
+        options={{
+          title: "Simulados",
+          href: ehAdministrador ? undefined : null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="flask-outline" size={size} color={color} />
           ),
         }}
       />
