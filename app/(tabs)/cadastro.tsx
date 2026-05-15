@@ -1,4 +1,4 @@
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, doc, setDoc } from "firebase/firestore";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -26,21 +26,61 @@ const categorias = [
   "Outros",
 ];
 
+const tiposQuantidade = ["unidades", "kg", "litros"];
+
+const tiposDoador = [
+  "Pessoa física",
+  "Empresa",
+  "Instituição",
+  "Grupo comunitário",
+];
+
 export default function Cadastro() {
+  const [origem, setOrigem] = useState("Doação");
+
   const [nome, setNome] = useState("");
   const [categoria, setCategoria] = useState("Grãos e cereais");
   const [quantidade, setQuantidade] = useState("");
   const [tipoQuantidade, setTipoQuantidade] = useState("unidades");
   const [validade, setValidade] = useState("");
-  const [origem, setOrigem] = useState("Doação");
 
   const [valorCompra, setValorCompra] = useState("");
-  const [origemDoacao, setOrigemDoacao] = useState("");
-  const [observacao, setObservacao] = useState("");
 
+  const [nomeDoador, setNomeDoador] = useState("");
+  const [tipoDoador, setTipoDoador] = useState("Pessoa física");
+  const [cidadeDoador, setCidadeDoador] = useState("Itapira");
+  const [contatoDoador, setContatoDoador] = useState("");
+
+  const [observacao, setObservacao] = useState("");
   const [carregando, setCarregando] = useState(false);
 
-  const formatarData = (texto) => {
+  const definirCategoriaGeral = (categoriaSelecionada: string) => {
+    if (categoriaSelecionada === "Produtos de limpeza") {
+      return "Limpeza";
+    }
+
+    if (categoriaSelecionada === "Higiene pessoal") {
+      return "Higiene";
+    }
+
+    if (categoriaSelecionada === "Outros") {
+      return "Outros";
+    }
+
+    return "Alimentos";
+  };
+
+  const gerarIdDoador = (nomeInformado: string) => {
+    return String(nomeInformado || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+  };
+
+  const formatarData = (texto: string) => {
     const numeros = texto.replace(/\D/g, "");
     let dataFormatada = numeros;
 
@@ -60,10 +100,10 @@ export default function Cadastro() {
     setValidade(dataFormatada);
   };
 
-  const converterDataBrasileira = (data) => {
+  const converterDataBrasileira = (data: string) => {
     if (!data) return null;
 
-    const partes = data.split("/");
+    const partes = String(data).split("/");
     if (partes.length !== 3) return null;
 
     const dia = Number(partes[0]);
@@ -96,10 +136,10 @@ export default function Cadastro() {
     return dataConvertida;
   };
 
-  const converterValorMonetario = (valor) => {
+  const converterValorMonetario = (valor: string) => {
     if (!valor) return 0;
 
-    const valorLimpo = valor
+    const valorLimpo = String(valor)
       .replace("R$", "")
       .replace(/\s/g, "")
       .replace(/\./g, "")
@@ -107,38 +147,50 @@ export default function Cadastro() {
 
     const valorNumerico = Number(valorLimpo);
 
-    if (isNaN(valorNumerico)) {
-      return 0;
-    }
+    if (isNaN(valorNumerico)) return 0;
 
     return valorNumerico;
   };
 
   const limparCampos = () => {
+    setOrigem("Doação");
+
     setNome("");
     setCategoria("Grãos e cereais");
     setQuantidade("");
     setTipoQuantidade("unidades");
     setValidade("");
-    setOrigem("Doação");
+
     setValorCompra("");
-    setOrigemDoacao("");
+
+    setNomeDoador("");
+    setTipoDoador("Pessoa física");
+    setCidadeDoador("Itapira");
+    setContatoDoador("");
+
     setObservacao("");
   };
 
   const validarCampos = () => {
-    if (!nome.trim() || !categoria || !quantidade.trim() || !validade.trim()) {
-      Alert.alert("Atenção", "Preencha os campos obrigatórios.");
+    if (!nome.trim()) {
+      Alert.alert("Atenção", "Informe o nome do alimento ou produto.");
       return false;
     }
 
-    if (isNaN(Number(quantidade)) || Number(quantidade) <= 0) {
-      Alert.alert("Atenção", "Digite uma quantidade válida.");
+    if (
+      !quantidade.trim() ||
+      isNaN(Number(quantidade)) ||
+      Number(quantidade) <= 0
+    ) {
+      Alert.alert("Atenção", "Informe uma quantidade válida.");
       return false;
     }
 
-    if (!converterDataBrasileira(validade)) {
-      Alert.alert("Atenção", "Digite a validade no formato DD/MM/AAAA.");
+    if (!validade.trim() || !converterDataBrasileira(validade)) {
+      Alert.alert(
+        "Atenção",
+        "Digite uma validade válida no formato DD/MM/AAAA."
+      );
       return false;
     }
 
@@ -146,7 +198,19 @@ export default function Cadastro() {
       const valorConvertido = converterValorMonetario(valorCompra);
 
       if (!valorCompra.trim() || valorConvertido <= 0) {
-        Alert.alert("Atenção", "Digite um valor válido para a compra.");
+        Alert.alert("Atenção", "Informe um valor válido para a compra.");
+        return false;
+      }
+    }
+
+    if (origem === "Doação") {
+      if (!nomeDoador.trim()) {
+        Alert.alert("Atenção", "Informe o nome do doador.");
+        return false;
+      }
+
+      if (!gerarIdDoador(nomeDoador)) {
+        Alert.alert("Atenção", "Informe um nome de doador válido.");
         return false;
       }
     }
@@ -162,16 +226,22 @@ export default function Cadastro() {
     try {
       setCarregando(true);
 
+      const dataRegistro = new Date();
       const dataValidade = converterDataBrasileira(validade);
+
       const quantidadeConvertida = Number(quantidade);
-      const precoCompra = origem === "Compra" ? converterValorMonetario(valorCompra) : 0;
+      const categoriaGeral = definirCategoriaGeral(categoria);
+
+      const precoCompra =
+        origem === "Compra" ? converterValorMonetario(valorCompra) : 0;
+
+      const doadorId =
+        origem === "Doação" ? gerarIdDoador(nomeDoador) : "";
 
       const detalheOrigem =
         origem === "Compra"
           ? "Compra realizada pela instituição"
-          : origemDoacao.trim()
-          ? origemDoacao.trim()
-          : "Doação sem origem informada";
+          : nomeDoador.trim();
 
       const observacaoFinal = observacao.trim()
         ? observacao.trim()
@@ -182,48 +252,129 @@ export default function Cadastro() {
       const novoAlimento = await addDoc(collection(db, "alimentos"), {
         nome: nome.trim(),
         categoria,
+        categoriaGeral,
+
         quantidade: quantidadeConvertida,
         tipoQuantidade,
+
         validade,
         validadeData: dataValidade,
+
         origem,
         detalheOrigem,
-        origemDoacao: origem === "Doação" ? detalheOrigem : "",
         precoCompra,
+
+        doadorId,
+        nomeDoador: origem === "Doação" ? nomeDoador.trim() : "",
+        tipoDoador: origem === "Doação" ? tipoDoador : "",
+        cidadeDoador:
+          origem === "Doação"
+            ? cidadeDoador.trim() || "Não informada"
+            : "",
+        contatoDoador:
+          origem === "Doação"
+            ? contatoDoador.trim() || "Não informado"
+            : "",
+
         observacao: observacaoFinal,
-        criadoEm: new Date(),
+        criadoEm: dataRegistro,
+        atualizadoEm: dataRegistro,
       });
 
       await addDoc(collection(db, "movimentacoes"), {
         produtoId: novoAlimento.id,
         nomeProduto: nome.trim(),
+
+        categoria,
+        categoriaGeral,
+
         tipo: "entrada",
+        origem,
+        detalheOrigem,
+
         quantidade: quantidadeConvertida,
         quantidadeAnterior: 0,
         quantidadeAtual: quantidadeConvertida,
-        categoria,
-        origem,
-        detalheOrigem,
-        origemDoacao: origem === "Doação" ? detalheOrigem : "",
         tipoQuantidade,
+
         precoCompra,
+
+        doadorId,
+        nomeDoador: origem === "Doação" ? nomeDoador.trim() : "",
+        tipoDoador: origem === "Doação" ? tipoDoador : "",
+
         observacao: observacaoFinal,
-        data: new Date(),
-        mes: String(new Date().getMonth() + 1).padStart(2, "0"),
-        ano: String(new Date().getFullYear()),
+
+        data: dataRegistro,
+        mes: String(dataRegistro.getMonth() + 1).padStart(2, "0"),
+        ano: String(dataRegistro.getFullYear()),
       });
 
-      Alert.alert("Sucesso", "Alimento cadastrado!");
+      if (origem === "Doação") {
+        await setDoc(
+          doc(db, "doadores", doadorId),
+          {
+            nome: nomeDoador.trim(),
+            tipoDoador,
+            cidade: cidadeDoador.trim() || "Não informada",
+            contato: contatoDoador.trim() || "Não informado",
+            atualizadoEm: dataRegistro,
+            criadoEm: dataRegistro,
+          },
+          { merge: true }
+        );
+
+        await addDoc(collection(db, "doacoes"), {
+          doadorId,
+          nomeDoador: nomeDoador.trim(),
+          tipoDoador,
+          cidade: cidadeDoador.trim() || "Não informada",
+          contato: contatoDoador.trim() || "Não informado",
+
+          produto: nome.trim(),
+          categoriaGeral,
+          categoria,
+
+          quantidade: quantidadeConvertida,
+          tipoQuantidade,
+
+          alimentoId: novoAlimento.id,
+          origem: "Doação",
+
+          data: dataRegistro,
+          mes: String(dataRegistro.getMonth() + 1).padStart(2, "0"),
+          ano: String(dataRegistro.getFullYear()),
+
+          criadoEm: dataRegistro,
+          dadoSimulado: false,
+        });
+      }
+
+      Alert.alert(
+        "Sucesso",
+        origem === "Compra"
+          ? "Compra cadastrada no estoque!"
+          : "Doação cadastrada no estoque e na base da IA!"
+      );
+
       limparCampos();
     } catch (error) {
       console.log(error);
-      Alert.alert("Erro", "Não foi possível cadastrar o alimento.");
+      Alert.alert("Erro", "Não foi possível salvar o cadastro.");
     } finally {
       setCarregando(false);
     }
   };
 
-  const BotaoOpcao = ({ texto, selecionado, aoPressionar }) => (
+  const BotaoOpcao = ({
+    texto,
+    selecionado,
+    aoPressionar,
+  }: {
+    texto: string;
+    selecionado: boolean;
+    aoPressionar: () => void;
+  }) => (
     <Pressable
       disabled={carregando}
       onPress={aoPressionar}
@@ -249,15 +400,42 @@ export default function Cadastro() {
       <Text style={styles.titulo}>Cadastro</Text>
 
       <Text style={styles.subtituloPrincipal}>
-        Registrar novo alimento no estoque
+        Registre compras ou doações recebidas pela despensa.
       </Text>
 
       <View style={styles.formulario}>
-        <Text style={styles.label}>Nome do alimento</Text>
+        <Text style={styles.subtitulo}>Origem do item</Text>
+
+        <View style={styles.opcoes}>
+          <BotaoOpcao
+            texto="Doação"
+            selecionado={origem === "Doação"}
+            aoPressionar={() => {
+              setOrigem("Doação");
+              setValorCompra("");
+            }}
+          />
+
+          <BotaoOpcao
+            texto="Compra"
+            selecionado={origem === "Compra"}
+            aoPressionar={() => {
+              setOrigem("Compra");
+              setNomeDoador("");
+              setTipoDoador("Pessoa física");
+              setCidadeDoador("Itapira");
+              setContatoDoador("");
+            }}
+          />
+        </View>
+
+        <Text style={styles.subtitulo}>Dados do item</Text>
+
+        <Text style={styles.label}>Nome do alimento/produto</Text>
 
         <TextInput
           style={styles.input}
-          placeholder="Ex: Arroz, feijão, leite..."
+          placeholder="Ex: Arroz, sabonete, detergente..."
           value={nome}
           editable={!carregando}
           onChangeText={setNome}
@@ -290,23 +468,14 @@ export default function Cadastro() {
         <Text style={styles.label}>Tipo de quantidade</Text>
 
         <View style={styles.opcoes}>
-          <BotaoOpcao
-            texto="unidades"
-            selecionado={tipoQuantidade === "unidades"}
-            aoPressionar={() => setTipoQuantidade("unidades")}
-          />
-
-          <BotaoOpcao
-            texto="kg"
-            selecionado={tipoQuantidade === "kg"}
-            aoPressionar={() => setTipoQuantidade("kg")}
-          />
-
-          <BotaoOpcao
-            texto="litros"
-            selecionado={tipoQuantidade === "litros"}
-            aoPressionar={() => setTipoQuantidade("litros")}
-          />
+          {tiposQuantidade.map((item) => (
+            <BotaoOpcao
+              key={item}
+              texto={item}
+              selecionado={tipoQuantidade === item}
+              aoPressionar={() => setTipoQuantidade(item)}
+            />
+          ))}
         </View>
 
         <Text style={styles.label}>Validade</Text>
@@ -321,30 +490,10 @@ export default function Cadastro() {
           maxLength={10}
         />
 
-        <Text style={styles.label}>Origem</Text>
-
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            texto="Doação"
-            selecionado={origem === "Doação"}
-            aoPressionar={() => {
-              setOrigem("Doação");
-              setValorCompra("");
-            }}
-          />
-
-          <BotaoOpcao
-            texto="Compra"
-            selecionado={origem === "Compra"}
-            aoPressionar={() => {
-              setOrigem("Compra");
-              setOrigemDoacao("");
-            }}
-          />
-        </View>
-
         {origem === "Compra" && (
           <>
+            <Text style={styles.subtitulo}>Dados da compra</Text>
+
             <Text style={styles.label}>Valor da compra</Text>
 
             <TextInput
@@ -360,14 +509,49 @@ export default function Cadastro() {
 
         {origem === "Doação" && (
           <>
-            <Text style={styles.label}>Origem da doação</Text>
+            <Text style={styles.subtitulo}>Dados do doador</Text>
+
+            <Text style={styles.label}>Nome do doador</Text>
 
             <TextInput
               style={styles.input}
-              placeholder="Ex: Mercado parceiro, campanha, pessoa física..."
-              value={origemDoacao}
+              placeholder="Ex: Mercado Bom Preço, Família Silva..."
+              value={nomeDoador}
               editable={!carregando}
-              onChangeText={setOrigemDoacao}
+              onChangeText={setNomeDoador}
+            />
+
+            <Text style={styles.label}>Tipo do doador</Text>
+
+            <View style={styles.opcoes}>
+              {tiposDoador.map((item) => (
+                <BotaoOpcao
+                  key={item}
+                  texto={item}
+                  selecionado={tipoDoador === item}
+                  aoPressionar={() => setTipoDoador(item)}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.label}>Cidade</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: Itapira"
+              value={cidadeDoador}
+              editable={!carregando}
+              onChangeText={setCidadeDoador}
+            />
+
+            <Text style={styles.label}>Contato</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Telefone, e-mail ou observação"
+              value={contatoDoador}
+              editable={!carregando}
+              onChangeText={setContatoDoador}
             />
           </>
         )}
@@ -375,8 +559,8 @@ export default function Cadastro() {
         <Text style={styles.label}>Observação</Text>
 
         <TextInput
-          style={[styles.input, { minHeight: 90, textAlignVertical: "top" }]}
-          placeholder="Observação opcional sobre o alimento"
+          style={[styles.input, { minHeight: 80, textAlignVertical: "top" }]}
+          placeholder="Observação opcional"
           value={observacao}
           editable={!carregando}
           onChangeText={setObservacao}
@@ -391,16 +575,20 @@ export default function Cadastro() {
           {carregando ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.textoBotao}>Cadastrar</Text>
+            <Text style={styles.textoBotao}>
+              {origem === "Compra" ? "Cadastrar compra" : "Cadastrar doação"}
+            </Text>
           )}
         </Pressable>
 
         {carregando && (
           <Text style={{ textAlign: "center", marginTop: 10 }}>
-            Salvando alimento...
+            Salvando cadastro...
           </Text>
         )}
       </View>
+
+      <View style={{ height: 25 }} />
     </ScrollView>
   );
 }
