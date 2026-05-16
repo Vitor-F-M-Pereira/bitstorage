@@ -179,6 +179,17 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
+  name="analise"
+  options={{
+    title: "Análise",
+    href: ehAdministrador ? undefined : null,
+    tabBarIcon: ({ color, size }) => (
+      <Ionicons name="analytics-outline" size={size} color={color} />
+    ),
+  }}
+/>
+
+      <Tabs.Screen
         name="dados-simulados"
         options={{
           title: "Simulados",
