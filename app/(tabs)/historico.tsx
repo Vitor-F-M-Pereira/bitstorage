@@ -7,10 +7,9 @@ import {
   orderBy,
   query,
 } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   ScrollView,
   Text,
@@ -20,6 +19,24 @@ import {
 
 import { auth, db } from "../../services/firebaseConfig";
 import { colors, styles } from "../../styles/estoqueStyles";
+
+type RegistroHistorico = {
+  id: string;
+  tipoRegistro: "Compra" | "Doação";
+  produto: string;
+  categoria?: string;
+  categoriaGeral?: string;
+  quantidade: number;
+  tipoQuantidade?: string;
+  valorCompra?: number;
+  nomeDoador?: string;
+  tipoDoador?: string;
+  origem?: string;
+  data?: any;
+  mes?: string;
+  ano?: string;
+  dadoSimulado?: boolean;
+};
 
 const meses = [
   { nome: "Janeiro", valor: "01" },
@@ -36,26 +53,16 @@ const meses = [
   { nome: "Dezembro", valor: "12" },
 ];
 
-const filtrosTipo = [
-  { nome: "Todos", valor: "todos" },
-  { nome: "Entradas", valor: "entrada" },
-  { nome: "Saídas", valor: "saida" },
-];
-
-const filtrosOrigem = [
-  { nome: "Todas", valor: "todas" },
-  { nome: "Doações", valor: "Doação" },
-  { nome: "Compras", valor: "Compra" },
-];
-
 export default function Historico() {
   const dataAtual = new Date();
 
   const [tipoUsuario, setTipoUsuario] = useState("");
   const [carregandoUsuario, setCarregandoUsuario] = useState(true);
-  const [carregandoMovimentacoes, setCarregandoMovimentacoes] = useState(true);
+  const [carregandoCompras, setCarregandoCompras] = useState(true);
+  const [carregandoDoacoes, setCarregandoDoacoes] = useState(true);
 
-  const [movimentacoes, setMovimentacoes] = useState([]);
+  const [compras, setCompras] = useState<RegistroHistorico[]>([]);
+  const [doacoes, setDoacoes] = useState<RegistroHistorico[]>([]);
 
   const [mesSelecionado, setMesSelecionado] = useState(
     String(dataAtual.getMonth() + 1).padStart(2, "0")
@@ -65,8 +72,7 @@ export default function Historico() {
     String(dataAtual.getFullYear())
   );
 
-  const [tipoSelecionado, setTipoSelecionado] = useState("todos");
-  const [origemSelecionada, setOrigemSelecionada] = useState("todas");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
@@ -106,32 +112,92 @@ export default function Historico() {
     const unsubscribe = onSnapshot(
       consulta,
       (snapshot) => {
-        const lista = [];
+        const lista: RegistroHistorico[] = [];
 
         snapshot.forEach((documento) => {
-          lista.push({
-            id: documento.id,
-            ...documento.data(),
-          });
+          const dados = documento.data();
+
+          if (dados.tipo === "entrada" && dados.origem === "Compra") {
+            lista.push({
+              id: documento.id,
+              tipoRegistro: "Compra",
+              produto: dados.nomeProduto || "Produto não informado",
+              categoria: dados.categoria || "Não informada",
+              categoriaGeral: dados.categoriaGeral || "Não informada",
+              quantidade: Number(dados.quantidade || 0),
+              tipoQuantidade: dados.tipoQuantidade || "unidades",
+              valorCompra: Number(dados.precoCompra || 0),
+              origem: "Compra",
+              data: dados.data,
+              mes: dados.mes,
+              ano: dados.ano,
+              dadoSimulado: false,
+            });
+          }
         });
 
-        setMovimentacoes(lista);
-        setCarregandoMovimentacoes(false);
+        setCompras(lista);
+        setCarregandoCompras(false);
       },
       (error) => {
         console.log(error);
-        setCarregandoMovimentacoes(false);
+        setCarregandoCompras(false);
       }
     );
 
     return () => unsubscribe();
   }, []);
 
-  const converterData = (data) => {
+  useEffect(() => {
+    const consulta = query(collection(db, "doacoes"), orderBy("data", "desc"));
+
+    const unsubscribe = onSnapshot(
+      consulta,
+      (snapshot) => {
+        const lista: RegistroHistorico[] = [];
+
+        snapshot.forEach((documento) => {
+          const dados = documento.data();
+
+          lista.push({
+            id: documento.id,
+            tipoRegistro: "Doação",
+            produto: dados.produto || "Produto não informado",
+            categoria: dados.categoria || "Não informada",
+            categoriaGeral: dados.categoriaGeral || "Não informada",
+            quantidade: Number(dados.quantidade || 0),
+            tipoQuantidade: dados.tipoQuantidade || "unidades",
+            nomeDoador: dados.nomeDoador || "Doador não informado",
+            tipoDoador: dados.tipoDoador || "Não informado",
+            origem: "Doação",
+            data: dados.data,
+            mes: dados.mes,
+            ano: dados.ano,
+            dadoSimulado: dados.dadoSimulado === true,
+          });
+        });
+
+        setDoacoes(lista);
+        setCarregandoDoacoes(false);
+      },
+      (error) => {
+        console.log(error);
+        setCarregandoDoacoes(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const converterData = (data: any) => {
     if (!data) return null;
 
-    if (data.toDate) {
+    if (data?.toDate) {
       return data.toDate();
+    }
+
+    if (data instanceof Date) {
+      return data;
     }
 
     const dataConvertida = new Date(data);
@@ -143,7 +209,30 @@ export default function Historico() {
     return dataConvertida;
   };
 
-  const formatarData = (data) => {
+  const obterMesAno = (item: RegistroHistorico) => {
+    if (item.mes && item.ano) {
+      return {
+        mes: String(item.mes).padStart(2, "0"),
+        ano: String(item.ano),
+      };
+    }
+
+    const data = converterData(item.data);
+
+    if (!data) {
+      return {
+        mes: "",
+        ano: "",
+      };
+    }
+
+    return {
+      mes: String(data.getMonth() + 1).padStart(2, "0"),
+      ano: String(data.getFullYear()),
+    };
+  };
+
+  const formatarData = (data: any) => {
     const dataConvertida = converterData(data);
 
     if (!dataConvertida) {
@@ -153,7 +242,7 @@ export default function Historico() {
     return dataConvertida.toLocaleDateString("pt-BR");
   };
 
-  const formatarMoeda = (valor) => {
+  const formatarMoeda = (valor: any) => {
     const numero = Number(valor || 0);
 
     return numero.toLocaleString("pt-BR", {
@@ -162,106 +251,114 @@ export default function Historico() {
     });
   };
 
-  const movimentacoesDoMes = movimentacoes.filter((item) => {
-    const data = converterData(item.data);
+  const registrosDoMes = useMemo(() => {
+    const todos = [...compras, ...doacoes];
 
-    if (!data) return false;
+    return todos
+      .filter((item) => {
+        const { mes, ano } = obterMesAno(item);
 
-    const mes = String(data.getMonth() + 1).padStart(2, "0");
-    const ano = String(data.getFullYear());
+        const passaMesAno =
+          mes === mesSelecionado && ano === String(anoSelecionado);
 
-    return mes === mesSelecionado && ano === anoSelecionado;
-  });
+        if (!passaMesAno) return false;
 
-  const movimentacoesFiltradas = movimentacoesDoMes.filter((item) => {
-    const tipoOk =
-      tipoSelecionado === "todos" || item.tipo === tipoSelecionado;
+        if (filtroTipo === "compras") return item.tipoRegistro === "Compra";
+        if (filtroTipo === "doacoes") return item.tipoRegistro === "Doação";
+        if (filtroTipo === "simulados") return item.dadoSimulado === true;
 
-    const origemOk =
-      origemSelecionada === "todas" ||
-      String(item.origem || "") === origemSelecionada;
+        return true;
+      })
+      .sort((a, b) => {
+        const dataA = converterData(a.data)?.getTime() || 0;
+        const dataB = converterData(b.data)?.getTime() || 0;
 
-    return tipoOk && origemOk;
-  });
+        return dataB - dataA;
+      });
+  }, [compras, doacoes, mesSelecionado, anoSelecionado, filtroTipo]);
 
-  const totalEntradas = movimentacoesDoMes.filter(
-    (item) => item.tipo === "entrada"
+  const totalCompras = registrosDoMes.filter(
+    (item) => item.tipoRegistro === "Compra"
   ).length;
 
-  const totalSaidas = movimentacoesDoMes.filter(
-    (item) => item.tipo === "saida"
+  const totalDoacoes = registrosDoMes.filter(
+    (item) => item.tipoRegistro === "Doação"
   ).length;
 
-  const totalCompras = movimentacoesDoMes.filter(
-    (item) => item.tipo === "entrada" && item.origem === "Compra"
+  const totalSimulados = registrosDoMes.filter(
+    (item) => item.dadoSimulado === true
   ).length;
 
-  const totalDoacoes = movimentacoesDoMes.filter(
-    (item) => item.tipo === "entrada" && item.origem === "Doação"
-  ).length;
+  const valorTotalCompras = registrosDoMes.reduce((total, item) => {
+    if (item.tipoRegistro === "Compra") {
+      return total + Number(item.valorCompra || 0);
+    }
 
-  const quantidadeEntrada = movimentacoesDoMes.reduce((total, item) => {
-    if (item.tipo === "entrada") {
+    return total;
+  }, 0);
+
+  const quantidadeTotalDoada = registrosDoMes.reduce((total, item) => {
+    if (item.tipoRegistro === "Doação") {
       return total + Number(item.quantidade || 0);
     }
 
     return total;
   }, 0);
 
-  const quantidadeSaida = movimentacoesDoMes.reduce((total, item) => {
-    if (item.tipo === "saida") {
-      return total + Number(item.quantidade || 0);
-    }
-
-    return total;
-  }, 0);
-
-  const valorTotalCompras = movimentacoesDoMes.reduce((total, item) => {
-    if (item.tipo === "entrada" && item.origem === "Compra") {
-      return total + Number(item.precoCompra || 0);
-    }
-
-    return total;
-  }, 0);
-
-  const saldoMovimentado = quantidadeEntrada - quantidadeSaida;
-
-  const categoriasMovimentadas = movimentacoesDoMes.reduce((resultado, item) => {
-    const categoria = item.categoria || "Sem categoria";
+  const categoriasResumo = registrosDoMes.reduce((resultado: any, item) => {
+    const categoria = item.categoriaGeral || item.categoria || "Não informada";
 
     if (!resultado[categoria]) {
       resultado[categoria] = {
-        categoria,
+        nome: categoria,
         quantidade: 0,
-        movimentacoes: 0,
+        registros: 0,
       };
     }
 
     resultado[categoria].quantidade += Number(item.quantidade || 0);
-    resultado[categoria].movimentacoes += 1;
+    resultado[categoria].registros += 1;
 
     return resultado;
   }, {});
 
-  const rankingCategorias = Object.values(categoriasMovimentadas)
-    .sort((a, b) => b.quantidade - a.quantidade)
+  const rankingCategorias = Object.values(categoriasResumo)
+    .sort((a: any, b: any) => b.quantidade - a.quantidade)
     .slice(0, 3);
 
-  const carregandoTela = carregandoUsuario || carregandoMovimentacoes;
+  const carregandoTela =
+    carregandoUsuario || carregandoCompras || carregandoDoacoes;
 
-  const BotaoFiltro = ({ texto, selecionado, aoPressionar }) => (
+  const BotaoOpcao = ({
+    texto,
+    selecionado,
+    aoPressionar,
+  }: {
+    texto: string;
+    selecionado: boolean;
+    aoPressionar: () => void;
+  }) => (
     <Pressable
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
+      accessibilityHint="Toque duas vezes para selecionar esta opção."
       disabled={carregandoTela}
       onPress={aoPressionar}
-      style={[
+      style={({ pressed }) => [
         styles.opcao,
+        {
+          minHeight: 46,
+          justifyContent: "center",
+          opacity: carregandoTela || pressed ? 0.65 : 1,
+        },
         selecionado && styles.opcaoSelecionada,
-        carregandoTela && { opacity: 0.6 },
       ]}
     >
       <Text
         style={[
           styles.textoOpcao,
+          { fontSize: 15 },
           selecionado && styles.textoOpcaoSelecionada,
         ]}
       >
@@ -270,71 +367,257 @@ export default function Historico() {
     </Pressable>
   );
 
-  const CardResumo = ({ titulo, valor, descricao }) => (
-    <View style={styles.card}>
-      <Text style={styles.nome}>{titulo}</Text>
+  const LinhaResumo = ({
+    titulo,
+    valor,
+    descricao,
+    tipo = "neutro",
+  }: {
+    titulo: string;
+    valor: number | string;
+    descricao: string;
+    tipo?: "neutro" | "sucesso" | "alerta" | "perigo" | "info";
+  }) => {
+    let corFundo = colors.card;
+    let corBorda = colors.borda;
+    let corNumero = colors.texto;
 
-      <Text
+    if (tipo === "sucesso") {
+      corFundo = colors.sucessoFundo;
+      corBorda = colors.sucesso;
+      corNumero = colors.sucesso;
+    }
+
+    if (tipo === "alerta") {
+      corFundo = colors.alertaFundo;
+      corBorda = colors.alerta;
+      corNumero = colors.alerta;
+    }
+
+    if (tipo === "perigo") {
+      corFundo = colors.perigoFundo;
+      corBorda = colors.perigo;
+      corNumero = colors.perigo;
+    }
+
+    if (tipo === "info") {
+      corFundo = colors.secundarioClaro;
+      corBorda = colors.secundario;
+      corNumero = colors.secundario;
+    }
+
+    return (
+      <View
+        accessible
+        accessibilityRole="text"
+        accessibilityLabel={`${titulo}. Valor: ${valor}. ${descricao}`}
         style={{
-          fontSize: 24,
-          fontWeight: "bold",
-          color: colors?.principal || "#2E7D32",
-          marginTop: 4,
+          backgroundColor: corFundo,
+          borderWidth: 1,
+          borderColor: corBorda,
+          borderRadius: 16,
+          paddingVertical: 12,
+          paddingHorizontal: 14,
+          marginBottom: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          minHeight: 72,
         }}
       >
-        {valor}
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: "900",
+              color: colors.texto,
+              marginBottom: 2,
+            }}
+          >
+            {titulo}
+          </Text>
+
+          <Text
+            style={{
+              fontSize: 13,
+              color: colors.textoSuave,
+              lineHeight: 18,
+            }}
+          >
+            {descricao}
+          </Text>
+        </View>
+
+        <Text
+          style={{
+            fontSize: 26,
+            fontWeight: "900",
+            color: corNumero,
+            minWidth: 70,
+            textAlign: "right",
+          }}
+        >
+          {valor}
+        </Text>
+      </View>
+    );
+  };
+
+  const Bloco = ({
+    titulo,
+    descricao,
+    children,
+  }: {
+    titulo: string;
+    descricao?: string;
+    children: React.ReactNode;
+  }) => (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 20,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: colors.borda,
+        marginBottom: 16,
+      }}
+    >
+      <Text accessibilityRole="header" style={styles.subtitulo}>
+        {titulo}
       </Text>
 
-      <Text
-        style={{
-          marginTop: 6,
-          color: colors?.textoSuave || "#666",
-          lineHeight: 20,
-        }}
-      >
-        {descricao}
-      </Text>
+      {descricao && (
+        <Text
+          style={{
+            color: colors.textoSuave,
+            lineHeight: 20,
+            fontSize: 14,
+            marginBottom: 12,
+          }}
+        >
+          {descricao}
+        </Text>
+      )}
+
+      {children}
     </View>
   );
 
-  const renderItem = ({ item }) => {
-    const tipoFormatado = item.tipo === "entrada" ? "Entrada" : "Saída";
+  const CardRegistro = ({ item }: { item: RegistroHistorico }) => {
+    const ehCompra = item.tipoRegistro === "Compra";
 
     return (
-      <View style={styles.card}>
-        <Text style={styles.nome}>
-          {item.nomeProduto || "Produto não informado"}
+      <View
+        accessible
+        accessibilityRole="text"
+        accessibilityLabel={`${item.tipoRegistro} de ${item.produto}. Quantidade: ${item.quantidade} ${item.tipoQuantidade}. Data: ${formatarData(item.data)}.`}
+        style={{
+          backgroundColor: item.dadoSimulado
+            ? colors.alertaFundo
+            : ehCompra
+            ? colors.secundarioClaro
+            : colors.sucessoFundo,
+          borderColor: item.dadoSimulado
+            ? colors.alerta
+            : ehCompra
+            ? colors.secundario
+            : colors.sucesso,
+          borderWidth: 1,
+          borderRadius: 18,
+          padding: 15,
+          marginBottom: 12,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "flex-start",
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: "900",
+                color: colors.texto,
+                marginBottom: 4,
+              }}
+            >
+              {item.produto}
+            </Text>
+
+            <Text style={{ color: colors.textoSuave, lineHeight: 21 }}>
+              {item.categoriaGeral || "Categoria não informada"} •{" "}
+              {item.categoria || "Não informada"}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: ehCompra ? colors.secundario : colors.sucesso,
+              borderRadius: 999,
+              paddingVertical: 6,
+              paddingHorizontal: 12,
+            }}
+          >
+            <Text
+              style={{
+                color: ehCompra ? colors.secundario : colors.sucesso,
+                fontWeight: "900",
+                fontSize: 13,
+              }}
+            >
+              {item.tipoRegistro}
+            </Text>
+          </View>
+        </View>
+
+        <Text
+          style={{
+            marginTop: 8,
+            color: colors.texto,
+            fontWeight: "800",
+          }}
+        >
+          Quantidade: {item.quantidade} {item.tipoQuantidade || "unidades"}
         </Text>
 
-        <Text>Tipo: {tipoFormatado}</Text>
-
-        <Text>
-          Quantidade: {item.quantidade || 0} {item.tipoQuantidade || ""}
+        <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
+          Data: {formatarData(item.data)}
         </Text>
 
-        <Text>Quantidade anterior: {item.quantidadeAnterior ?? "Não informada"}</Text>
-        <Text>Quantidade atual: {item.quantidadeAtual ?? "Não informada"}</Text>
+        {ehCompra ? (
+          <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
+            Valor da compra: {formatarMoeda(item.valorCompra)}
+          </Text>
+        ) : (
+          <>
+            <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
+              Doador: {item.nomeDoador || "Não informado"}
+            </Text>
 
-        {item.categoria && <Text>Categoria: {item.categoria}</Text>}
-
-        {item.origem && <Text>Origem: {item.origem}</Text>}
-
-        {item.origem === "Compra" && (
-          <Text>Valor da compra: {formatarMoeda(item.precoCompra)}</Text>
+            <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
+              Tipo do doador: {item.tipoDoador || "Não informado"}
+            </Text>
+          </>
         )}
 
-        {item.origem === "Doação" && (
-          <Text>
-            Origem da doação:{" "}
-            {item.origemDoacao || item.detalheOrigem || "Não informada"}
+        {item.dadoSimulado && (
+          <Text
+            style={{
+              marginTop: 10,
+              color: colors.alerta,
+              fontWeight: "900",
+              lineHeight: 20,
+            }}
+          >
+            Dado fictício usado para teste da IA.
           </Text>
         )}
-
-        {item.observacao && <Text>Observação: {item.observacao}</Text>}
-
-        <Text>Registrado por: {item.registradoPorTipo || "Não informado"}</Text>
-
-        <Text>Data: {formatarData(item.data)}</Text>
       </View>
     );
   };
@@ -351,10 +634,14 @@ export default function Historico() {
           },
         ]}
       >
-        <ActivityIndicator size="large" color={colors?.principal || "#2E7D32"} />
+        <ActivityIndicator
+          size="large"
+          color={colors.principal}
+          accessibilityLabel="Carregando histórico"
+        />
 
         <Text style={{ marginTop: 10, textAlign: "center" }}>
-          Carregando relatório...
+          Carregando histórico...
         </Text>
       </View>
     );
@@ -363,141 +650,158 @@ export default function Historico() {
   if (tipoUsuario !== "administrador") {
     return (
       <View style={styles.container}>
-        <Text style={styles.titulo}>Acesso restrito</Text>
+        <Text accessibilityRole="header" style={styles.titulo}>
+          Acesso restrito
+        </Text>
 
-        <Text>
-          Somente administradores podem acessar o histórico e os relatórios.
+        <Text style={styles.subtituloPrincipal}>
+          Somente administradores podem acessar o histórico.
         </Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.titulo}>Histórico</Text>
-
-      <Text style={styles.subtituloPrincipal}>
-        Relatório mensal de movimentações do estoque
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{
+        paddingBottom: 32,
+      }}
+    >
+      <Text accessibilityRole="header" style={styles.titulo}>
+        Histórico
       </Text>
 
-      <Text style={styles.subtitulo}>Ano do relatório</Text>
+      <Text style={styles.subtituloPrincipal}>
+        Relatório mensal de compras e doações registradas no sistema.
+      </Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Ex: 2026"
-        value={anoSelecionado}
-        onChangeText={setAnoSelecionado}
-        keyboardType="numeric"
-        maxLength={4}
-      />
+      <Bloco
+        titulo="Período do relatório"
+        descricao="Escolha o mês e o ano para visualizar somente as compras e doações daquele período."
+      >
+        <Text style={styles.label}>Ano</Text>
 
-      <Text style={styles.subtitulo}>Mês do relatório</Text>
+        <TextInput
+          accessible
+          accessibilityLabel="Ano do relatório"
+          accessibilityHint="Digite o ano com quatro números."
+          style={styles.input}
+          placeholder="Ex: 2026"
+          value={anoSelecionado}
+          onChangeText={setAnoSelecionado}
+          keyboardType="numeric"
+          maxLength={4}
+        />
 
-      <View style={styles.opcoes}>
-        {meses.map((item) => (
-          <BotaoFiltro
-            key={item.valor}
-            texto={item.nome}
-            selecionado={mesSelecionado === item.valor}
-            aoPressionar={() => setMesSelecionado(item.valor)}
+        <Text style={styles.label}>Mês</Text>
+
+        <View style={styles.opcoes}>
+          {meses.map((item) => (
+            <BotaoOpcao
+              key={item.valor}
+              texto={item.nome}
+              selecionado={mesSelecionado === item.valor}
+              aoPressionar={() => setMesSelecionado(item.valor)}
+            />
+          ))}
+        </View>
+      </Bloco>
+
+      <Bloco
+        titulo="Filtrar registros"
+        descricao="Escolha se deseja ver todos os registros, somente compras, somente doações ou apenas dados fictícios."
+      >
+        <View style={styles.opcoes}>
+          <BotaoOpcao
+            texto="Todos"
+            selecionado={filtroTipo === "todos"}
+            aoPressionar={() => setFiltroTipo("todos")}
           />
-        ))}
-      </View>
 
-      <Text style={styles.subtitulo}>Filtrar por tipo</Text>
-
-      <View style={styles.opcoes}>
-        {filtrosTipo.map((item) => (
-          <BotaoFiltro
-            key={item.valor}
-            texto={item.nome}
-            selecionado={tipoSelecionado === item.valor}
-            aoPressionar={() => setTipoSelecionado(item.valor)}
+          <BotaoOpcao
+            texto="Compras"
+            selecionado={filtroTipo === "compras"}
+            aoPressionar={() => setFiltroTipo("compras")}
           />
-        ))}
-      </View>
 
-      <Text style={styles.subtitulo}>Filtrar por origem</Text>
-
-      <View style={styles.opcoes}>
-        {filtrosOrigem.map((item) => (
-          <BotaoFiltro
-            key={item.valor}
-            texto={item.nome}
-            selecionado={origemSelecionada === item.valor}
-            aoPressionar={() => setOrigemSelecionada(item.valor)}
+          <BotaoOpcao
+            texto="Doações"
+            selecionado={filtroTipo === "doacoes"}
+            aoPressionar={() => setFiltroTipo("doacoes")}
           />
-        ))}
-      </View>
 
-      <Text style={styles.subtitulo}>Resumo do mês</Text>
+          <BotaoOpcao
+            texto="Fictícios"
+            selecionado={filtroTipo === "simulados"}
+            aoPressionar={() => setFiltroTipo("simulados")}
+          />
+        </View>
+      </Bloco>
 
-      <CardResumo
-        titulo="Movimentações"
-        valor={movimentacoesDoMes.length}
-        descricao="Quantidade total de registros encontrados no mês selecionado."
-      />
+      <Bloco
+        titulo="Resumo do mês"
+        descricao="Resumo apenas do mês e ano selecionados."
+      >
+        <LinhaResumo
+          titulo="Registros encontrados"
+          valor={registrosDoMes.length}
+          descricao="Compras e doações do período"
+          tipo="info"
+        />
 
-      <CardResumo
-        titulo="Entradas"
-        valor={totalEntradas}
-        descricao={`Foram adicionados ${quantidadeEntrada} item(ns) ao estoque no período.`}
-      />
+        <LinhaResumo
+          titulo="Compras"
+          valor={totalCompras}
+          descricao={`Total gasto: ${formatarMoeda(valorTotalCompras)}`}
+          tipo={totalCompras > 0 ? "alerta" : "info"}
+        />
 
-      <CardResumo
-        titulo="Saídas"
-        valor={totalSaidas}
-        descricao={`Foram retirados ${quantidadeSaida} item(ns) do estoque no período.`}
-      />
+        <LinhaResumo
+          titulo="Doações"
+          valor={totalDoacoes}
+          descricao={`Quantidade total doada: ${quantidadeTotalDoada}`}
+          tipo={totalDoacoes > 0 ? "sucesso" : "info"}
+        />
 
-      <CardResumo
-        titulo="Saldo movimentado"
-        valor={saldoMovimentado}
-        descricao="Diferença entre a quantidade total de entradas e saídas."
-      />
+        <LinhaResumo
+          titulo="Dados fictícios"
+          valor={totalSimulados}
+          descricao="Registros simulados usados para teste da IA"
+          tipo={totalSimulados > 0 ? "alerta" : "info"}
+        />
+      </Bloco>
 
-      <CardResumo
-        titulo="Compras"
-        valor={totalCompras}
-        descricao={`Total gasto em compras: ${formatarMoeda(valorTotalCompras)}.`}
-      />
-
-      <CardResumo
-        titulo="Doações"
-        valor={totalDoacoes}
-        descricao="Entradas registradas como doação no mês selecionado."
-      />
-
-      <Text style={styles.subtitulo}>Categorias mais movimentadas</Text>
-
-      {rankingCategorias.length === 0 ? (
-        <Text style={styles.listaVazia}>
-          Nenhuma categoria movimentada neste período.
-        </Text>
-      ) : (
-        rankingCategorias.map((item) => (
-          <View key={item.categoria} style={styles.card}>
-            <Text style={styles.nome}>{item.categoria}</Text>
-
-            <Text>Quantidade movimentada: {item.quantidade}</Text>
-            <Text>Total de registros: {item.movimentacoes}</Text>
-          </View>
-        ))
+      {rankingCategorias.length > 0 && (
+        <Bloco
+          titulo="Categorias mais registradas"
+          descricao="Categorias com maior quantidade movimentada no período."
+        >
+          {rankingCategorias.map((item: any) => (
+            <LinhaResumo
+              key={item.nome}
+              titulo={item.nome}
+              valor={item.quantidade}
+              descricao={`${item.registros} registro(s) no período`}
+              tipo="neutro"
+            />
+          ))}
+        </Bloco>
       )}
 
-      <Text style={styles.subtitulo}>Movimentações do período</Text>
+      <Text accessibilityRole="header" style={styles.subtitulo}>
+        Registros do período
+      </Text>
 
-      <FlatList
-        data={movimentacoesFiltradas}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        scrollEnabled={false}
-        ListEmptyComponent={
-          <Text style={styles.listaVazia}>
-            Nenhuma movimentação encontrada para os filtros selecionados.
-          </Text>
-        }
-      />
+      {registrosDoMes.length === 0 ? (
+        <Text style={styles.listaVazia}>
+          Nenhuma compra ou doação encontrada para o mês selecionado.
+        </Text>
+      ) : (
+        registrosDoMes.map((item) => <CardRegistro key={item.id} item={item} />)
+      )}
+
+      <View style={{ height: 24 }} />
     </ScrollView>
   );
 }

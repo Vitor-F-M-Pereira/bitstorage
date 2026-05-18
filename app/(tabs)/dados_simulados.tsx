@@ -1,20 +1,20 @@
 import {
-    collection,
-    deleteDoc,
-    doc,
-    getDocs,
-    query,
-    where,
-    writeBatch
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  where,
+  writeBatch
 } from "firebase/firestore";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
 } from "react-native";
 
 import { db } from "../../services/firebaseConfig";
@@ -38,6 +38,20 @@ export default function DadosSimulados() {
       cidade: "Itapira",
       contato: "limpeza@email.com",
     },
+    {
+      id: "comunidade-esperanca",
+      nome: "Comunidade Esperança",
+      tipoDoador: "Grupo comunitário",
+      cidade: "Itapira",
+      contato: "comunidade@email.com",
+    },
+    {
+      id: "farmacia-popular",
+      nome: "Farmácia Popular",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "farmacia@email.com",
+    },
   ];
 
   const doacoesSimuladas = [
@@ -53,10 +67,24 @@ export default function DadosSimulados() {
       categoria: "Grãos e cereais",
       quantidade: 25,
       tipoQuantidade: "kg",
-      data: new Date(2025, 5, 10),
+      data: new Date(2025, 2, 10),
     },
     {
       id: "doacao-simulada-002",
+      doadorId: "mercado-solidario",
+      nomeDoador: "Mercado Solidário",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "mercado@email.com",
+      produto: "Feijão",
+      categoriaGeral: "Alimentos",
+      categoria: "Grãos e cereais",
+      quantidade: 20,
+      tipoQuantidade: "kg",
+      data: new Date(2025, 5, 18),
+    },
+    {
+      id: "doacao-simulada-003",
       doadorId: "mercado-solidario",
       nomeDoador: "Mercado Solidário",
       tipoDoador: "Empresa",
@@ -67,10 +95,10 @@ export default function DadosSimulados() {
       categoria: "Outros",
       quantidade: 18,
       tipoQuantidade: "unidades",
-      data: new Date(2025, 8, 22),
+      data: new Date(2025, 9, 22),
     },
     {
-      id: "doacao-simulada-003",
+      id: "doacao-simulada-004",
       doadorId: "mercado-solidario",
       nomeDoador: "Mercado Solidário",
       tipoDoador: "Empresa",
@@ -84,21 +112,22 @@ export default function DadosSimulados() {
       data: new Date(2026, 1, 14),
     },
     {
-      id: "doacao-simulada-004",
+      id: "doacao-simulada-005",
       doadorId: "mercado-solidario",
       nomeDoador: "Mercado Solidário",
       tipoDoador: "Empresa",
       cidade: "Itapira",
       contato: "mercado@email.com",
-      produto: "Arroz",
+      produto: "Macarrão",
       categoriaGeral: "Alimentos",
-      categoria: "Grãos e cereais",
+      categoria: "Massas",
       quantidade: 30,
-      tipoQuantidade: "kg",
+      tipoQuantidade: "unidades",
       data: new Date(2026, 4, 5),
     },
+
     {
-      id: "doacao-simulada-005",
+      id: "doacao-simulada-006",
       doadorId: "limpeza-amiga",
       nomeDoador: "Limpeza Amiga",
       tipoDoador: "Empresa",
@@ -109,21 +138,7 @@ export default function DadosSimulados() {
       categoria: "Produtos de limpeza",
       quantidade: 40,
       tipoQuantidade: "unidades",
-      data: new Date(2025, 6, 18),
-    },
-    {
-      id: "doacao-simulada-006",
-      doadorId: "limpeza-amiga",
-      nomeDoador: "Limpeza Amiga",
-      tipoDoador: "Empresa",
-      cidade: "Itapira",
-      contato: "limpeza@email.com",
-      produto: "Sabão em pó",
-      categoriaGeral: "Limpeza",
-      categoria: "Produtos de limpeza",
-      quantidade: 20,
-      tipoQuantidade: "kg",
-      data: new Date(2025, 10, 9),
+      data: new Date(2025, 3, 12),
     },
     {
       id: "doacao-simulada-007",
@@ -132,15 +147,29 @@ export default function DadosSimulados() {
       tipoDoador: "Empresa",
       cidade: "Itapira",
       contato: "limpeza@email.com",
-      produto: "Detergente",
+      produto: "Sabão em pó",
       categoriaGeral: "Limpeza",
       categoria: "Produtos de limpeza",
-      quantidade: 35,
-      tipoQuantidade: "unidades",
-      data: new Date(2026, 2, 12),
+      quantidade: 22,
+      tipoQuantidade: "kg",
+      data: new Date(2025, 6, 18),
     },
     {
       id: "doacao-simulada-008",
+      doadorId: "limpeza-amiga",
+      nomeDoador: "Limpeza Amiga",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "limpeza@email.com",
+      produto: "Desinfetante",
+      categoriaGeral: "Limpeza",
+      categoria: "Produtos de limpeza",
+      quantidade: 25,
+      tipoQuantidade: "litros",
+      data: new Date(2025, 10, 9),
+    },
+    {
+      id: "doacao-simulada-009",
       doadorId: "limpeza-amiga",
       nomeDoador: "Limpeza Amiga",
       tipoDoador: "Empresa",
@@ -151,7 +180,163 @@ export default function DadosSimulados() {
       categoria: "Produtos de limpeza",
       quantidade: 45,
       tipoQuantidade: "unidades",
+      data: new Date(2026, 2, 12),
+    },
+    {
+      id: "doacao-simulada-010",
+      doadorId: "limpeza-amiga",
+      nomeDoador: "Limpeza Amiga",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "limpeza@email.com",
+      produto: "Água sanitária",
+      categoriaGeral: "Limpeza",
+      categoria: "Produtos de limpeza",
+      quantidade: 20,
+      tipoQuantidade: "litros",
       data: new Date(2026, 4, 8),
+    },
+
+    {
+      id: "doacao-simulada-011",
+      doadorId: "comunidade-esperanca",
+      nomeDoador: "Comunidade Esperança",
+      tipoDoador: "Grupo comunitário",
+      cidade: "Itapira",
+      contato: "comunidade@email.com",
+      produto: "Arroz",
+      categoriaGeral: "Alimentos",
+      categoria: "Grãos e cereais",
+      quantidade: 12,
+      tipoQuantidade: "kg",
+      data: new Date(2025, 1, 20),
+    },
+    {
+      id: "doacao-simulada-012",
+      doadorId: "comunidade-esperanca",
+      nomeDoador: "Comunidade Esperança",
+      tipoDoador: "Grupo comunitário",
+      cidade: "Itapira",
+      contato: "comunidade@email.com",
+      produto: "Sabonete",
+      categoriaGeral: "Higiene",
+      categoria: "Higiene pessoal",
+      quantidade: 18,
+      tipoQuantidade: "unidades",
+      data: new Date(2025, 4, 11),
+    },
+    {
+      id: "doacao-simulada-013",
+      doadorId: "comunidade-esperanca",
+      nomeDoador: "Comunidade Esperança",
+      tipoDoador: "Grupo comunitário",
+      cidade: "Itapira",
+      contato: "comunidade@email.com",
+      produto: "Detergente",
+      categoriaGeral: "Limpeza",
+      categoria: "Produtos de limpeza",
+      quantidade: 15,
+      tipoQuantidade: "unidades",
+      data: new Date(2025, 8, 3),
+    },
+    {
+      id: "doacao-simulada-014",
+      doadorId: "comunidade-esperanca",
+      nomeDoador: "Comunidade Esperança",
+      tipoDoador: "Grupo comunitário",
+      cidade: "Itapira",
+      contato: "comunidade@email.com",
+      produto: "Leite",
+      categoriaGeral: "Alimentos",
+      categoria: "Leites e derivados",
+      quantidade: 20,
+      tipoQuantidade: "litros",
+      data: new Date(2026, 0, 19),
+    },
+    {
+      id: "doacao-simulada-015",
+      doadorId: "comunidade-esperanca",
+      nomeDoador: "Comunidade Esperança",
+      tipoDoador: "Grupo comunitário",
+      cidade: "Itapira",
+      contato: "comunidade@email.com",
+      produto: "Pasta de dente",
+      categoriaGeral: "Higiene",
+      categoria: "Higiene pessoal",
+      quantidade: 16,
+      tipoQuantidade: "unidades",
+      data: new Date(2026, 3, 25),
+    },
+
+    {
+      id: "doacao-simulada-016",
+      doadorId: "farmacia-popular",
+      nomeDoador: "Farmácia Popular",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "farmacia@email.com",
+      produto: "Sabonete",
+      categoriaGeral: "Higiene",
+      categoria: "Higiene pessoal",
+      quantidade: 50,
+      tipoQuantidade: "unidades",
+      data: new Date(2025, 2, 28),
+    },
+    {
+      id: "doacao-simulada-017",
+      doadorId: "farmacia-popular",
+      nomeDoador: "Farmácia Popular",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "farmacia@email.com",
+      produto: "Pasta de dente",
+      categoriaGeral: "Higiene",
+      categoria: "Higiene pessoal",
+      quantidade: 42,
+      tipoQuantidade: "unidades",
+      data: new Date(2025, 7, 6),
+    },
+    {
+      id: "doacao-simulada-018",
+      doadorId: "farmacia-popular",
+      nomeDoador: "Farmácia Popular",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "farmacia@email.com",
+      produto: "Escova de dente",
+      categoriaGeral: "Higiene",
+      categoria: "Higiene pessoal",
+      quantidade: 38,
+      tipoQuantidade: "unidades",
+      data: new Date(2025, 11, 13),
+    },
+    {
+      id: "doacao-simulada-019",
+      doadorId: "farmacia-popular",
+      nomeDoador: "Farmácia Popular",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "farmacia@email.com",
+      produto: "Absorvente",
+      categoriaGeral: "Higiene",
+      categoria: "Higiene pessoal",
+      quantidade: 60,
+      tipoQuantidade: "unidades",
+      data: new Date(2026, 2, 15),
+    },
+    {
+      id: "doacao-simulada-020",
+      doadorId: "farmacia-popular",
+      nomeDoador: "Farmácia Popular",
+      tipoDoador: "Empresa",
+      cidade: "Itapira",
+      contato: "farmacia@email.com",
+      produto: "Lenço umedecido",
+      categoriaGeral: "Higiene",
+      categoria: "Higiene pessoal",
+      quantidade: 45,
+      tipoQuantidade: "unidades",
+      data: new Date(2026, 5, 4),
     },
   ];
 
@@ -160,7 +345,7 @@ export default function DadosSimulados() {
 
     Alert.alert(
       "Inserir dados simulados",
-      "Essa ação vai adicionar poucos dados fictícios distribuídos entre 2025 e 2026 para testar a clusterização de perfis de doação.",
+      "Essa ação vai adicionar dados fictícios distribuídos entre 2025 e 2026 para testar a clusterização de perfis de doação.",
       [
         {
           text: "Cancelar",
@@ -306,19 +491,29 @@ export default function DadosSimulados() {
             marginBottom: 12,
           }}
         >
-          Esta tela insere poucos dados fictícios distribuídos entre 2025 e 2026.
-          A intenção é apenas demonstrar que a clusterização consegue separar
-          perfis diferentes de doadores.
+          Esta tela insere dados fictícios distribuídos entre 2025 e 2026. A
+          intenção é demonstrar que a clusterização consegue separar perfis
+          diferentes de doadores.
         </Text>
 
         <Text style={{ color: colors.textoSuave, lineHeight: 22 }}>
-          Perfil 1: doador focado em alimentos essenciais, como arroz, carne e
-          óleo.
+          Perfil 1: doador focado em alimentos essenciais, como arroz, feijão,
+          carne, óleo e macarrão.
         </Text>
 
         <Text style={{ color: colors.textoSuave, lineHeight: 22 }}>
-          Perfil 2: doador focado em produtos de limpeza, como sabão e
-          detergente.
+          Perfil 2: doador focado em produtos de limpeza, como detergente, sabão
+          e desinfetante.
+        </Text>
+
+        <Text style={{ color: colors.textoSuave, lineHeight: 22 }}>
+          Perfil 3: doador com contribuições variadas, misturando alimentos,
+          higiene e limpeza.
+        </Text>
+
+        <Text style={{ color: colors.textoSuave, lineHeight: 22 }}>
+          Perfil 4: doador focado em higiene pessoal, como sabonete, pasta de
+          dente, escova e absorvente.
         </Text>
       </View>
 
