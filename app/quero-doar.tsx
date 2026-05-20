@@ -235,7 +235,8 @@ export default function QueroDoarScreen() {
 
   const [modalItensAberto, setModalItensAberto] = useState(false);
   const [buscaItem, setBuscaItem] = useState("");
-  const [itensNecessarios, setItensNecessarios] = useState<ItemNecessario[]>([]);
+  const [itensAutomaticos, setItensAutomaticos] = useState<ItemNecessario[]>([]);
+  const [itensManuais, setItensManuais] = useState<ItemNecessario[]>([]);
   const [carregandoItens, setCarregandoItens] = useState(true);
 
   useEffect(() => {
@@ -266,15 +267,13 @@ export default function QueroDoarScreen() {
             const prioridadeNivel =
               dados.prioridadeNivel || dados.nivelPrioridade || null;
 
-            const quantidadeMinima = Number(
-              dados.quantidadeMinima || dados.estoqueMinimo || 3
-            );
+            const quantidadeMinima = 10;
 
             let motivo = "";
 
             if (quantidadeAtual <= 0) {
               motivo = "Em falta";
-            } else if (quantidadeAtual <= quantidadeMinima) {
+            } else if (quantidadeAtual < quantidadeMinima) {
               motivo = "Estoque baixo";
             } else if (prioridadeDoacao) {
               motivo = prioridadeNivel
@@ -302,7 +301,7 @@ export default function QueroDoarScreen() {
             return peso(a.motivo) - peso(b.motivo);
           });
 
-        setItensNecessarios(lista);
+        setItensAutomaticos(lista);
         setCarregandoItens(false);
       },
       (error) => {
@@ -313,6 +312,44 @@ export default function QueroDoarScreen() {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "itensPrioritarios"),
+      (snapshot) => {
+        const lista = snapshot.docs
+          .map((documento) => {
+            const dados = documento.data() as any;
+
+            const nome = String(dados.nome || "").trim() || "Item solicitado";
+            const motivo =
+              String(dados.motivo || "").trim() ||
+              "Pedido da cozinha";
+
+            return {
+              id: `manual_${documento.id}`,
+              nome,
+              quantidade: 0,
+              tipoQuantidade: dados.tipoQuantidade || "unidades",
+              motivo,
+              prioridadeNivel: "alta",
+            };
+          })
+          .sort((a, b) => a.nome.localeCompare(b.nome));
+
+        setItensManuais(lista);
+      },
+      (error) => {
+        console.log(error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const itensNecessarios = useMemo(() => {
+    return [...itensManuais, ...itensAutomaticos];
+  }, [itensManuais, itensAutomaticos]);
 
   const itensFiltrados = useMemo(() => {
     const termo = normalizarTexto(buscaItem);

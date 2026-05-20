@@ -113,15 +113,10 @@ export default function Alertas() {
 
   const estoqueBaixo = (item: Alimento) => {
     const quantidade = Number(item.quantidade || 0);
-    const tipoQuantidade = String(item.tipoQuantidade || "").toLowerCase();
 
     if (quantidade <= 0) return false;
 
-    if (tipoQuantidade === "kg" || tipoQuantidade === "litros") {
-      return quantidade <= 2;
-    }
-
-    return quantidade <= 5;
+    return quantidade < 10;
   };
 
   const itensComDados: ItemComAlerta[] = alimentos.map((item) => {
@@ -233,7 +228,7 @@ export default function Alertas() {
     }
 
     if (tipo === "baixo") {
-      return "Produto com pouca quantidade em estoque.";
+      return "Produto com menos de 10 em estoque.";
     }
 
     return "Produto precisa de atenção.";
@@ -645,7 +640,7 @@ export default function Alertas() {
         <LinhaResumo
           titulo="Estoque baixo"
           valor={itensEstoqueBaixo.length}
-          descricao="Produtos com pouca quantidade"
+          descricao="Produtos com menos de 10 kg, unidades ou litros"
           tipo={itensEstoqueBaixo.length > 0 ? "alerta" : "sucesso"}
         />
 

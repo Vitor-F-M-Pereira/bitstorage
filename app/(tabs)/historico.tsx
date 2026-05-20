@@ -10,6 +10,8 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -662,11 +664,16 @@ export default function Historico() {
   }
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.fundo }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
       style={styles.container}
       contentContainerStyle={{
-        paddingBottom: 32,
+        paddingBottom: 120,
       }}
+      keyboardShouldPersistTaps="handled"
     >
       <Text accessibilityRole="header" style={styles.titulo}>
         Histórico
@@ -802,6 +809,7 @@ export default function Historico() {
       )}
 
       <View style={{ height: 24 }} />
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

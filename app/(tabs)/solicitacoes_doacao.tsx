@@ -11,6 +11,8 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
   FlatList,
   Linking,
@@ -104,6 +106,21 @@ const filtros = [
   { id: "cancelado", label: "Cancelados" },
 ];
 
+const categoriasPorGrupo = {
+  Alimentos: [
+    "Grãos e cereais",
+    "Massas",
+    "Enlatados e conservas",
+    "Leites e derivados",
+    "Carnes e proteínas",
+    "Hortifruti",
+    "Bebidas",
+  ],
+  Limpeza: ["Produtos de limpeza"],
+  Higiene: ["Higiene pessoal"],
+  Outros: ["Outros"],
+};
+
 function normalizarTexto(valor: string) {
   return String(valor || "")
     .normalize("NFD")
@@ -120,14 +137,14 @@ function formatarTelefone(valor?: string) {
   if (somenteNumeros.length === 11) {
     return `(${somenteNumeros.slice(0, 2)}) ${somenteNumeros.slice(
       2,
-      7
+      7,
     )}-${somenteNumeros.slice(7)}`;
   }
 
   if (somenteNumeros.length === 10) {
     return `(${somenteNumeros.slice(0, 2)}) ${somenteNumeros.slice(
       2,
-      6
+      6,
     )}-${somenteNumeros.slice(6)}`;
   }
 
@@ -202,17 +219,14 @@ function gerarIdDoador(nomeInformado: string) {
 function obterProduto(solicitacao: IntencaoDoacao) {
   return (
     String(
-      solicitacao.produto ||
-        solicitacao.nomeProduto ||
-        solicitacao.item ||
-        ""
+      solicitacao.produto || solicitacao.nomeProduto || solicitacao.item || "",
     ).trim() || "Produto não informado"
   );
 }
 
 function obterQuantidadeNumerica(solicitacao: IntencaoDoacao) {
   const valor = String(
-    solicitacao.quantidade || solicitacao.quantidadeTexto || "0"
+    solicitacao.quantidade || solicitacao.quantidadeTexto || "0",
   )
     .replace(",", ".")
     .replace(/[^\d.]/g, "");
@@ -293,10 +307,18 @@ export default function SolicitacoesDoacaoScreen() {
   const [solicitacaoSelecionada, setSolicitacaoSelecionada] =
     useState<IntencaoDoacao | null>(null);
 
+  const [modalRecebimentoAberto, setModalRecebimentoAberto] = useState(false);
+  const [solicitacaoRecebimento, setSolicitacaoRecebimento] =
+    useState<IntencaoDoacao | null>(null);
+  const [categoriaGeralRecebimento, setCategoriaGeralRecebimento] =
+    useState("Alimentos");
+  const [categoriaRecebimento, setCategoriaRecebimento] =
+    useState("Grãos e cereais");
+
   useEffect(() => {
     const referencia = query(
       collection(db, "intencoes_doacao"),
-      orderBy("criadoEm", "desc")
+      orderBy("criadoEm", "desc"),
     );
 
     const unsubscribe = onSnapshot(
@@ -327,8 +349,11 @@ export default function SolicitacoesDoacaoScreen() {
             categoriaGeral: dados.categoriaGeral || "Alimentos",
 
             quantidade:
-              dados.quantidade || dados.quantidadeTexto || "Quantidade não informada",
-            quantidadeTexto: dados.quantidadeTexto || String(dados.quantidade || ""),
+              dados.quantidade ||
+              dados.quantidadeTexto ||
+              "Quantidade não informada",
+            quantidadeTexto:
+              dados.quantidadeTexto || String(dados.quantidade || ""),
             tipoQuantidade: dados.tipoQuantidade || "unidades",
 
             validade: dados.validade || null,
@@ -355,11 +380,11 @@ export default function SolicitacoesDoacaoScreen() {
 
         Alert.alert(
           "Erro",
-          "Não foi possível carregar as solicitações de doação."
+          "Não foi possível carregar as solicitações de doação.",
         );
 
         setCarregando(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -375,7 +400,7 @@ export default function SolicitacoesDoacaoScreen() {
       const textoBusca = normalizarTexto(
         `${solicitacao.nomeDoador} ${obterProduto(solicitacao)} ${
           solicitacao.categoria
-        } ${solicitacao.contato}`
+        } ${solicitacao.contato}`,
       );
 
       const passaBusca = termo.length === 0 || textoBusca.includes(termo);
@@ -406,14 +431,30 @@ export default function SolicitacoesDoacaoScreen() {
     setSolicitacaoSelecionada(null);
   };
 
+  const selecionarCategoriaGeralRecebimento = (grupo: string) => {
+    const categorias = categoriasPorGrupo[
+      grupo as keyof typeof categoriasPorGrupo
+    ] || ["Outros"];
+
+    setCategoriaGeralRecebimento(grupo);
+    setCategoriaRecebimento(categorias[0]);
+  };
+
+  const fecharModalRecebimento = () => {
+    setModalRecebimentoAberto(false);
+    setSolicitacaoRecebimento(null);
+    setCategoriaGeralRecebimento("Alimentos");
+    setCategoriaRecebimento("Grãos e cereais");
+  };
+
   const alterarStatus = async (
     solicitacao: IntencaoDoacao,
-    novoStatus: StatusDoacao
+    novoStatus: StatusDoacao,
   ) => {
     if (solicitacao.status === "recebido") {
       Alert.alert(
         "Atenção",
-        "Esta doação já foi recebida e registrada no estoque."
+        "Esta doação já foi recebida e registrada no estoque.",
       );
       return;
     }
@@ -439,7 +480,10 @@ export default function SolicitacoesDoacaoScreen() {
       }
     } catch (error) {
       console.error("Erro ao atualizar status:", error);
-      Alert.alert("Erro", "Não foi possível atualizar o status da solicitação.");
+      Alert.alert(
+        "Erro",
+        "Não foi possível atualizar o status da solicitação.",
+      );
     } finally {
       setProcessandoId(null);
     }
@@ -449,30 +493,41 @@ export default function SolicitacoesDoacaoScreen() {
     if (solicitacao.estoqueRegistrado) {
       Alert.alert(
         "Doação já registrada",
-        "Esta doação já foi marcada como recebida anteriormente."
+        "Esta doação já foi marcada como recebida anteriormente.",
       );
       return;
     }
 
-    Alert.alert(
-      "Confirmar recebimento",
-      `Deseja marcar a doação de "${obterProduto(
-        solicitacao
-      )}" como recebida e registrar no estoque?`,
-      [
-        {
-          text: "Cancelar",
-          style: "cancel",
-        },
-        {
-          text: "Registrar",
-          onPress: () => receberDoacao(solicitacao),
-        },
+    const categoriaGeralSugerida =
+      solicitacao.categoriaGeral &&
+      categoriasPorGrupo[
+        solicitacao.categoriaGeral as keyof typeof categoriasPorGrupo
       ]
-    );
+        ? solicitacao.categoriaGeral
+        : "Alimentos";
+
+    const categoriasSugeridas =
+      categoriasPorGrupo[
+        categoriaGeralSugerida as keyof typeof categoriasPorGrupo
+      ] || categoriasPorGrupo.Alimentos;
+
+    const categoriaSugerida = categoriasSugeridas.includes(
+      String(solicitacao.categoria || ""),
+    )
+      ? String(solicitacao.categoria)
+      : categoriasSugeridas[0];
+
+    setSolicitacaoRecebimento(solicitacao);
+    setCategoriaGeralRecebimento(categoriaGeralSugerida);
+    setCategoriaRecebimento(categoriaSugerida);
+    setModalRecebimentoAberto(true);
   };
 
-  const receberDoacao = async (solicitacao: IntencaoDoacao) => {
+  const receberDoacao = async (
+    solicitacao: IntencaoDoacao,
+    categoriaGeralSelecionada: string,
+    categoriaSelecionada: string,
+  ) => {
     try {
       setProcessandoId(solicitacao.id);
 
@@ -485,15 +540,16 @@ export default function SolicitacoesDoacaoScreen() {
       const validade = String(solicitacao.validade || "").trim();
       const validadeData = validade ? converterDataBrasileira(validade) : null;
 
-      const categoriaGeral = "Alimentos";
-      const categoria = "Outros";
+      const categoriaGeral = categoriaGeralSelecionada || "Alimentos";
+      const categoria = categoriaSelecionada || "Outros";
 
       const nomeDoador =
         String(solicitacao.nomeDoador || "").trim() || "Doador não informado";
 
       const contatoDoador =
-        String(solicitacao.contatoOriginal || solicitacao.contato || "").trim() ||
-        "Não informado";
+        String(
+          solicitacao.contatoOriginal || solicitacao.contato || "",
+        ).trim() || "Não informado";
 
       const doadorId = gerarIdDoador(nomeDoador || contatoDoador);
 
@@ -603,7 +659,7 @@ export default function SolicitacoesDoacaoScreen() {
           atualizadoEm: dataRegistro,
           criadoEm: dataRegistro,
         },
-        { merge: true }
+        { merge: true },
       );
 
       const intencaoRef = doc(db, "intencoes_doacao", solicitacao.id);
@@ -622,16 +678,17 @@ export default function SolicitacoesDoacaoScreen() {
 
       Alert.alert(
         "Doação recebida",
-        "A doação foi registrada no estoque, no histórico e na base da Análise IA."
+        "A doação foi registrada no estoque, no histórico e na base da Análise IA.",
       );
 
       fecharDetalhes();
+      fecharModalRecebimento();
     } catch (error) {
       console.error("Erro ao receber doação:", error);
 
       Alert.alert(
         "Erro",
-        "Não foi possível registrar esta doação no estoque. Verifique as regras do Firebase e tente novamente."
+        "Não foi possível registrar esta doação no estoque. Verifique as regras do Firebase e tente novamente.",
       );
     } finally {
       setProcessandoId(null);
@@ -647,7 +704,7 @@ export default function SolicitacoesDoacaoScreen() {
     }
 
     const mensagem = encodeURIComponent(
-      "Olá! Somos da ONG Casa da Criança. Recebemos sua intenção de doação pelo BitStorage e gostaríamos de confirmar algumas informações."
+      "Olá! Somos da ONG Casa da Criança. Recebemos sua intenção de doação pelo BitStorage e gostaríamos de confirmar algumas informações.",
     );
 
     const url = `https://wa.me/55${telefone}?text=${mensagem}`;
@@ -655,7 +712,7 @@ export default function SolicitacoesDoacaoScreen() {
     Linking.openURL(url).catch(() => {
       Alert.alert(
         "Erro",
-        "Não foi possível abrir o WhatsApp neste dispositivo."
+        "Não foi possível abrir o WhatsApp neste dispositivo.",
       );
     });
   };
@@ -783,7 +840,11 @@ export default function SolicitacoesDoacaoScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#F6F8F4" }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.titulo}>Solicitações de Doação</Text>
         <Text style={styles.subtitulo}>
@@ -822,33 +883,35 @@ export default function SolicitacoesDoacaoScreen() {
         placeholderTextColor="#7C8A7C"
       />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filtrosContainer}
-      >
-        {filtros.map((filtro) => {
-          const ativo = filtroAtual === filtro.id;
+      <View style={styles.filtrosArea}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          style={styles.filtrosScroll}
+          contentContainerStyle={styles.filtrosContainer}
+        >
+          {filtros.map((filtro) => {
+            const ativo = filtroAtual === filtro.id;
 
-          return (
-            <TouchableOpacity
-              key={filtro.id}
-              style={[styles.filtroBotao, ativo && styles.filtroBotaoAtivo]}
-              onPress={() => setFiltroAtual(filtro.id)}
-              activeOpacity={0.85}
-            >
-              <Text
-                style={[
-                  styles.filtroTexto,
-                  ativo && styles.filtroTextoAtivo,
-                ]}
+            return (
+              <TouchableOpacity
+                key={filtro.id}
+                style={[styles.filtroBotao, ativo && styles.filtroBotaoAtivo]}
+                onPress={() => setFiltroAtual(filtro.id)}
+                activeOpacity={0.85}
               >
-                {filtro.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.filtroTexto, ativo && styles.filtroTextoAtivo]}
+                >
+                  {filtro.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <FlatList
         data={solicitacoesFiltradas}
@@ -899,7 +962,7 @@ export default function SolicitacoesDoacaoScreen() {
                     <Text style={styles.detalheValor}>
                       {formatarTelefone(
                         solicitacaoSelecionada.contatoOriginal ||
-                          solicitacaoSelecionada.contato
+                          solicitacaoSelecionada.contato,
                       )}
                     </Text>
                   </View>
@@ -939,7 +1002,7 @@ export default function SolicitacoesDoacaoScreen() {
                     onPress={() =>
                       abrirWhatsApp(
                         solicitacaoSelecionada.contatoOriginal ||
-                          solicitacaoSelecionada.contato
+                          solicitacaoSelecionada.contato,
                       )
                     }
                   >
@@ -1012,7 +1075,140 @@ export default function SolicitacoesDoacaoScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+
+      <Modal
+        visible={modalRecebimentoAberto}
+        transparent
+        animationType="fade"
+        onRequestClose={fecharModalRecebimento}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {solicitacaoRecebimento && (
+              <>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitulo}>Confirmar doação</Text>
+
+                  <TouchableOpacity
+                    style={styles.modalFechar}
+                    onPress={fecharModalRecebimento}
+                  >
+                    <Text style={styles.modalFecharTexto}>×</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.modalDescricao}>
+                  Antes de registrar no estoque, selecione a categoria correta
+                  da doação de "{obterProduto(solicitacaoRecebimento)}".
+                </Text>
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={styles.secaoTitulo}>Tipo da doação</Text>
+
+                  <View style={styles.opcoesContainer}>
+                    {Object.keys(categoriasPorGrupo).map((grupo) => {
+                      const ativo = categoriaGeralRecebimento === grupo;
+
+                      return (
+                        <TouchableOpacity
+                          key={grupo}
+                          style={[
+                            styles.opcaoBotao,
+                            ativo && styles.opcaoBotaoAtivo,
+                          ]}
+                          onPress={() =>
+                            selecionarCategoriaGeralRecebimento(grupo)
+                          }
+                          activeOpacity={0.85}
+                        >
+                          <Text
+                            style={[
+                              styles.opcaoTexto,
+                              ativo && styles.opcaoTextoAtivo,
+                            ]}
+                          >
+                            {grupo}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.secaoTitulo}>Categoria</Text>
+
+                  <View style={styles.opcoesContainer}>
+                    {categoriasPorGrupo[
+                      categoriaGeralRecebimento as keyof typeof categoriasPorGrupo
+                    ].map((item) => {
+                      const ativo = categoriaRecebimento === item;
+
+                      return (
+                        <TouchableOpacity
+                          key={item}
+                          style={[
+                            styles.opcaoBotao,
+                            ativo && styles.opcaoBotaoAtivo,
+                          ]}
+                          onPress={() => setCategoriaRecebimento(item)}
+                          activeOpacity={0.85}
+                        >
+                          <Text
+                            style={[
+                              styles.opcaoTexto,
+                              ativo && styles.opcaoTextoAtivo,
+                            ]}
+                          >
+                            {item}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <View style={styles.resumoRecebimento}>
+                    <Text style={styles.resumoRecebimentoLabel}>
+                      Vai entrar como
+                    </Text>
+                    <Text style={styles.resumoRecebimentoValor}>
+                      {categoriaGeralRecebimento} • {categoriaRecebimento}
+                    </Text>
+                  </View>
+
+                  <View style={styles.modalAcoes}>
+                    <TouchableOpacity
+                      style={styles.botaoPrincipalGrande}
+                      disabled={processandoId === solicitacaoRecebimento.id}
+                      onPress={() =>
+                        receberDoacao(
+                          solicitacaoRecebimento,
+                          categoriaGeralRecebimento,
+                          categoriaRecebimento,
+                        )
+                      }
+                    >
+                      <Text style={styles.botaoPrincipalTexto}>
+                        {processandoId === solicitacaoRecebimento.id
+                          ? "Registrando..."
+                          : "Registrar no estoque"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.botaoSecundarioGrande}
+                      disabled={processandoId === solicitacaoRecebimento.id}
+                      onPress={fecharModalRecebimento}
+                    >
+                      <Text style={styles.botaoSecundarioTexto}>Voltar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1075,17 +1271,29 @@ const styles = StyleSheet.create({
     color: "#223322",
     marginBottom: 12,
   },
+  filtrosArea: {
+    height: 48,
+    marginBottom: 12,
+  },
+  filtrosScroll: {
+    flexGrow: 0,
+  },
   filtrosContainer: {
     gap: 8,
-    paddingBottom: 12,
+    alignItems: "center",
+    paddingRight: 18,
   },
   filtroBotao: {
+    minHeight: 40,
+    minWidth: 74,
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 999,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#D8E2D4",
+    alignItems: "center",
+    justifyContent: "center",
   },
   filtroBotaoAtivo: {
     backgroundColor: "#2F6B3F",
@@ -1290,6 +1498,60 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#263826",
     lineHeight: 21,
+  },
+  secaoTitulo: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#263826",
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  opcoesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  opcaoBotao: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D8E2D4",
+    borderRadius: 999,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+  opcaoBotaoAtivo: {
+    backgroundColor: "#2F6B3F",
+    borderColor: "#2F6B3F",
+  },
+  opcaoTexto: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#4E5D4E",
+  },
+  opcaoTextoAtivo: {
+    color: "#FFFFFF",
+  },
+  resumoRecebimento: {
+    backgroundColor: "#F8FAF6",
+    borderWidth: 1,
+    borderColor: "#E1E8DE",
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  resumoRecebimentoLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#6B786B",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  resumoRecebimentoValor: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#263826",
   },
   botaoWhatsApp: {
     backgroundColor: "#E8F6F1",

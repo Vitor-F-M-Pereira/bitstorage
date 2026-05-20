@@ -1,13 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -29,6 +32,16 @@ type Alimento = {
   [key: string]: any;
 };
 
+type ItemManual = {
+  id: string;
+  nome?: string;
+  motivo?: string;
+  tipoQuantidade?: string;
+  criadoEm?: any;
+  manual?: boolean;
+  [key: string]: any;
+};
+
 type Filtro = "todos" | "alta" | "baixa" | "zerados" | "manual";
 
 const opcoesFiltro: { id: Filtro; texto: string }[] = [
@@ -41,8 +54,12 @@ const opcoesFiltro: { id: Filtro; texto: string }[] = [
 
 export default function Doacoes() {
   const [alimentos, setAlimentos] = useState<Alimento[]>([]);
+  const [itensManuais, setItensManuais] = useState<ItemManual[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [novoItem, setNovoItem] = useState("");
+  const [motivoNovoItem, setMotivoNovoItem] = useState("");
+  const [salvandoItem, setSalvandoItem] = useState(false);
 
   useEffect(() => {
     const consulta = query(collection(db, "alimentos"), orderBy("nome", "asc"));
@@ -72,17 +89,53 @@ export default function Doacoes() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const consulta = query(
+      collection(db, "itensPrioritarios"),
+      orderBy("criadoEm", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      consulta,
+      (snapshot) => {
+        const lista: ItemManual[] = [];
+
+        snapshot.forEach((documento) => {
+          lista.push({
+            id: documento.id,
+            ...documento.data(),
+            manual: true,
+          });
+        });
+
+        setItensManuais(lista);
+      },
+      (error) => {
+        console.log(error);
+        Alert.alert("Erro", "Não foi possível carregar os itens manuais.");
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const LIMITE_ESTOQUE_BAIXO = 10;
+
   const estoqueBaixo = (item: Alimento) => {
     const quantidade = Number(item.quantidade || 0);
     const tipoQuantidade = String(item.tipoQuantidade || "").toLowerCase();
 
     if (quantidade <= 0) return false;
 
-    if (tipoQuantidade === "kg" || tipoQuantidade === "litros") {
-      return quantidade <= 2;
+    if (
+      tipoQuantidade === "kg" ||
+      tipoQuantidade === "litros" ||
+      tipoQuantidade === "unidades"
+    ) {
+      return quantidade < LIMITE_ESTOQUE_BAIXO;
     }
 
-    return quantidade <= 5;
+    return quantidade < LIMITE_ESTOQUE_BAIXO;
   };
 
   const obterPrioridade = (item: Alimento) => {
@@ -142,8 +195,52 @@ export default function Doacoes() {
     };
   };
 
+  const cadastrarItemManual = async () => {
+    if (salvandoItem) return;
+
+    const nomeTratado = novoItem.trim();
+
+    if (nomeTratado.length < 2) {
+      Alert.alert("Atenção", "Informe o nome do item necessário.");
+      return;
+    }
+
+    try {
+      setSalvandoItem(true);
+
+      await addDoc(collection(db, "itensPrioritarios"), {
+        nome: nomeTratado,
+        motivo:
+          motivoNovoItem.trim() ||
+          "Item solicitado manualmente pela equipe da cozinha.",
+        tipoQuantidade: "unidades",
+        prioridadeDoacao: true,
+        nivelPrioridadeDoacao: "alta",
+        criadoEm: serverTimestamp(),
+      });
+
+      setNovoItem("");
+      setMotivoNovoItem("");
+      Alert.alert("Sucesso", "Item adicionado à lista de doações.");
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível adicionar o item.");
+    } finally {
+      setSalvandoItem(false);
+    }
+  };
+
+  const removerItemManual = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "itensPrioritarios", id));
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível remover o item.");
+    }
+  };
+
   const itensNecessarios = useMemo(() => {
-    return alimentos
+    const automaticos = alimentos
       .map((item) => ({ ...item, prioridadeCalculada: obterPrioridade(item) }))
       .filter((item) => {
         const quantidade = Number(item.quantidade || 0);
@@ -157,21 +254,42 @@ export default function Doacoes() {
         if (filtro === "manual") return manual;
 
         return quantidade <= 0 || baixo || manual || nivel === "media";
-      })
-      .sort((a, b) => {
-        const peso: Record<string, number> = { alta: 1, media: 2, baixa: 3 };
-        const prioridadeA = peso[a.prioridadeCalculada.nivel] || 4;
-        const prioridadeB = peso[b.prioridadeCalculada.nivel] || 4;
-
-        if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
-
-        return String(a.nome || "").localeCompare(String(b.nome || ""));
       });
-  }, [alimentos, filtro]);
 
-  const totalAlta = alimentos.filter(
-    (item) => obterPrioridade(item).nivel === "alta"
-  ).length;
+    const manuais = itensManuais
+      .map((item) => ({
+        ...item,
+        categoriaGeral: "Solicitado",
+        categoria: "Lista manual",
+        quantidade: 0,
+        tipoQuantidade: item.tipoQuantidade || "unidades",
+        prioridadeDoacao: true,
+        prioridadeCalculada: {
+          nivel: "alta",
+          titulo: "Pedido da cozinha",
+          motivo:
+            item.motivo ||
+            "Item solicitado manualmente pela equipe da cozinha.",
+          cor: colors.perigo,
+          fundo: colors.perigoFundo,
+        },
+      }))
+      .filter(() => filtro === "todos" || filtro === "alta" || filtro === "manual");
+
+    return [...manuais, ...automaticos].sort((a, b) => {
+      const peso: Record<string, number> = { alta: 1, media: 2, baixa: 3 };
+      const prioridadeA = peso[a.prioridadeCalculada.nivel] || 4;
+      const prioridadeB = peso[b.prioridadeCalculada.nivel] || 4;
+
+      if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
+
+      return String(a.nome || "").localeCompare(String(b.nome || ""));
+    });
+  }, [alimentos, itensManuais, filtro]);
+
+  const totalAlta =
+    alimentos.filter((item) => obterPrioridade(item).nivel === "alta").length +
+    itensManuais.length;
   const totalBaixo = alimentos.filter((item) => estoqueBaixo(item)).length;
   const totalZerados = alimentos.filter(
     (item) => Number(item.quantidade || 0) <= 0
@@ -180,6 +298,8 @@ export default function Doacoes() {
   const formatarQuantidade = (item: Alimento) => {
     const quantidade = Number(item.quantidade || 0);
     const tipo = item.tipoQuantidade || "unidades";
+
+    if (item.manual) return "Solicitado pela equipe";
 
     return `${quantidade} ${tipo}`;
   };
@@ -349,6 +469,29 @@ export default function Doacoes() {
         <Text style={{ color: colors.textoSuave, lineHeight: 21, marginTop: 10 }}>
           {prioridade.motivo}
         </Text>
+
+        {item.manual && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Remover ${item.nome || "item"} da lista manual`}
+            onPress={() => removerItemManual(item.id)}
+            style={({ pressed }) => ({
+              marginTop: 12,
+              minHeight: 44,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: colors.perigo,
+              backgroundColor: colors.perigoFundo,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text style={{ color: colors.perigo, fontWeight: "900" }}>
+              Remover da lista
+            </Text>
+          </Pressable>
+        )}
       </View>
     );
   };
@@ -372,10 +515,15 @@ export default function Doacoes() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 32 }}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.fundo }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        keyboardShouldPersistTaps="handled"
+      >
       <Text accessibilityRole="header" style={styles.titulo}>
         Itens para doação
       </Text>
@@ -425,6 +573,58 @@ export default function Doacoes() {
           marginBottom: 16,
         }}
       >
+        <Text style={styles.subtitulo}>Adicionar pedido manual</Text>
+        <Text style={{ color: colors.textoSuave, lineHeight: 20, marginBottom: 12 }}>
+          Escreva um item que a cozinha ou administração precisa receber. Ele aparece também na lista pública do “Quero doar”.
+        </Text>
+
+        <Text style={styles.label}>Item necessário</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ex: Feijão, leite, sabonete..."
+          value={novoItem}
+          onChangeText={setNovoItem}
+          editable={!salvandoItem}
+        />
+
+        <Text style={styles.label}>Motivo ou observação</Text>
+        <TextInput
+          style={[styles.input, { minHeight: 88, textAlignVertical: "top" }]}
+          placeholder="Ex: usado nas refeições da semana"
+          value={motivoNovoItem}
+          onChangeText={setMotivoNovoItem}
+          editable={!salvandoItem}
+          multiline
+        />
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Adicionar item à lista de doações"
+          disabled={salvandoItem}
+          onPress={cadastrarItemManual}
+          style={({ pressed }) => [
+            styles.botaoSalvar,
+            { minHeight: 52, opacity: salvandoItem || pressed ? 0.65 : 1 },
+          ]}
+        >
+          {salvandoItem ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.textoBotao}>Adicionar à lista</Text>
+          )}
+        </Pressable>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: colors.card,
+          borderColor: colors.borda,
+          borderWidth: 1,
+          borderRadius: 20,
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
         <Text style={styles.subtitulo}>Filtrar lista</Text>
         <View style={styles.opcoes}>
           {opcoesFiltro.map((opcao) => (
@@ -461,6 +661,7 @@ export default function Doacoes() {
           </View>
         }
       />
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

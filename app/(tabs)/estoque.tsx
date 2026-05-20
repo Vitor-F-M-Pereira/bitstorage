@@ -11,6 +11,8 @@ import {
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
   FlatList,
   Modal,
@@ -1105,11 +1107,16 @@ export default function Estoque() {
   }
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.fundo }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
       style={styles.container}
       contentContainerStyle={{
-        paddingBottom: 32,
+        paddingBottom: 120,
       }}
+      keyboardShouldPersistTaps="handled"
     >
       <Text accessibilityRole="header" style={styles.titulo}>
         Estoque
@@ -1633,6 +1640,7 @@ export default function Estoque() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

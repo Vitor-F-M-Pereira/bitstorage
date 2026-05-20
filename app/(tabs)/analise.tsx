@@ -1,81 +1,98 @@
 import { collection, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 
 import { db } from "../../services/firebaseConfig";
 import { colors, styles } from "../../styles/estoqueStyles";
 
 type Doacao = {
   id: string;
-  doadorId?: string;
   nomeDoador?: string;
-  tipoDoador?: string;
   categoriaGeral?: string;
   categoria?: string;
   produto?: string;
-  quantidade?: number;
+  nome?: string;
+  quantidade?: number | string;
   tipoQuantidade?: string;
+  unidade?: string;
+  origem?: string;
   data?: any;
   mes?: string;
   ano?: string;
   dadoSimulado?: boolean;
 };
 
-type PerfilDoador = {
-  doadorId: string;
-  nomeDoador: string;
-  tipoDoador: string;
-
-  totalAlimentos: number;
-  totalLimpeza: number;
-  totalHigiene: number;
-  totalOutros: number;
-
-  quantidadeTotal: number;
-  numeroDoacoes: number;
-  variedadeCategorias: number;
-
-  mesesComAlimentos: number;
-  mesesComLimpeza: number;
-  mesesComHigiene: number;
-  mesesAtivos: string[];
-
-  produtos: string[];
-  categorias: string[];
-
-  perfilPredominante: string;
-  vetor: number[];
-  cluster?: number;
+type ItemParaApi = {
+  nome: string;
+  categoria: string;
+  quantidade: number;
+  unidade: string;
+  origem: string;
 };
+
+type ClusterApi = {
+  grupo: number;
+  perfil: string;
+  categorias: string[];
+  quantidade_total: number;
+  quantidade_media: number;
+  frequencia: number;
+  recomendacao: string;
+};
+
+type ResultadoApi = {
+  total_registros: number;
+  total_grupos: number;
+  clusters: ClusterApi[];
+};
+
+const API_KMEANS_URL =
+  "https://bitstorage-kmeans-api-axhrcdfahne6ebae.eastus-01.azurewebsites.net/api/analisar-doacoes";
 
 const categoriasAlimentos = [
   "Grãos e cereais",
+  "Graos e cereais",
   "Massas",
   "Enlatados e conservas",
   "Leites e derivados",
   "Carnes e proteínas",
+  "Carnes e proteinas",
   "Hortifruti",
   "Bebidas",
 ];
 
-const nomesMeses: Record<string, string> = {
-  "01": "janeiro",
-  "02": "fevereiro",
-  "03": "março",
-  "04": "abril",
-  "05": "maio",
-  "06": "junho",
-  "07": "julho",
-  "08": "agosto",
-  "09": "setembro",
-  "10": "outubro",
-  "11": "novembro",
-  "12": "dezembro",
+const normalizarQuantidade = (valor: number | string | undefined) => {
+  if (valor === undefined || valor === null || valor === "") return 0;
+
+  if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
+
+  const valorConvertido = Number(String(valor).replace(",", "."));
+
+  return Number.isFinite(valorConvertido) ? valorConvertido : 0;
+};
+
+const definirCategoriaGeral = (categoriaInformada?: string) => {
+  const categoria = String(categoriaInformada || "").trim();
+
+  if (categoriasAlimentos.includes(categoria)) return "Alimentos";
+  if (categoria === "Produtos de limpeza") return "Limpeza";
+  if (categoria === "Higiene pessoal") return "Higiene";
+
+  return "Outros";
 };
 
 export default function AnaliseIA() {
   const [doacoes, setDoacoes] = useState<Doacao[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  const [carregandoBase, setCarregandoBase] = useState(true);
+  const [carregandoAnalise, setCarregandoAnalise] = useState(false);
+  const [resultadoApi, setResultadoApi] = useState<ResultadoApi | null>(null);
+  const [erroApi, setErroApi] = useState("");
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -91,520 +108,93 @@ export default function AnaliseIA() {
         });
 
         setDoacoes(lista);
-        setCarregando(false);
+        setCarregandoBase(false);
       },
       (error) => {
         console.log(error);
-        setCarregando(false);
+        setErroApi("Não foi possível carregar os dados de doações.");
+        setCarregandoBase(false);
       }
     );
 
     return () => unsubscribe();
   }, []);
 
-  const converterData = (data: any) => {
-    if (!data) return null;
-
-    if (data?.toDate) {
-      return data.toDate();
-    }
-
-    if (data instanceof Date) {
-      return data;
-    }
-
-    const dataConvertida = new Date(data);
-
-    if (isNaN(dataConvertida.getTime())) {
-      return null;
-    }
-
-    return dataConvertida;
-  };
-
-  const obterMesAno = (doacao: Doacao) => {
-    if (doacao.mes && doacao.ano) {
-      return `${doacao.ano}-${String(doacao.mes).padStart(2, "0")}`;
-    }
-
-    const data = converterData(doacao.data);
-
-    if (!data) {
-      return "sem-data";
-    }
-
-    const mes = String(data.getMonth() + 1).padStart(2, "0");
-    const ano = String(data.getFullYear());
-
-    return `${ano}-${mes}`;
-  };
-
-  const formatarMesAno = (mesAno: string) => {
-    if (!mesAno || mesAno === "sem-data") {
-      return "Data não informada";
-    }
-
-    const [ano, mes] = mesAno.split("-");
-
-    if (!ano || !mes || !nomesMeses[mes]) {
-      return mesAno;
-    }
-
-    return `${nomesMeses[mes]} de ${ano}`;
-  };
-
-  const definirCategoriaGeral = (categoriaInformada?: string) => {
-    const categoria = String(categoriaInformada || "").trim();
-
-    if (categoriasAlimentos.includes(categoria)) {
-      return "Alimentos";
-    }
-
-    if (categoria === "Produtos de limpeza") {
-      return "Limpeza";
-    }
-
-    if (categoria === "Higiene pessoal") {
-      return "Higiene";
-    }
-
-    return "Outros";
-  };
-
-  const definirPerfilPredominante = (perfil: {
-    totalAlimentos: number;
-    totalLimpeza: number;
-    totalHigiene: number;
-    totalOutros: number;
-    variedadeCategorias: number;
-  }) => {
-    const possuiAlimentos = perfil.totalAlimentos > 0;
-    const possuiLimpeza = perfil.totalLimpeza > 0;
-    const possuiHigiene = perfil.totalHigiene > 0;
-
-    const quantidadeTipos =
-      Number(possuiAlimentos) + Number(possuiLimpeza) + Number(possuiHigiene);
-
-    if (quantidadeTipos >= 3 || perfil.variedadeCategorias >= 3) {
-      return "Variado";
-    }
-
-    if (
-      perfil.totalAlimentos >= perfil.totalLimpeza &&
-      perfil.totalAlimentos >= perfil.totalHigiene &&
-      perfil.totalAlimentos >= perfil.totalOutros
-    ) {
-      return "Alimentos";
-    }
-
-    if (
-      perfil.totalLimpeza >= perfil.totalAlimentos &&
-      perfil.totalLimpeza >= perfil.totalHigiene &&
-      perfil.totalLimpeza >= perfil.totalOutros
-    ) {
-      return "Limpeza";
-    }
-
-    if (
-      perfil.totalHigiene >= perfil.totalAlimentos &&
-      perfil.totalHigiene >= perfil.totalLimpeza &&
-      perfil.totalHigiene >= perfil.totalOutros
-    ) {
-      return "Higiene";
-    }
-
-    return "Outros";
-  };
-
-  const montarPerfisDoadores = () => {
-    const perfis: Record<string, PerfilDoador> = {};
-    const mesesPorDoador: Record<
-      string,
-      {
-        alimentos: Set<string>;
-        limpeza: Set<string>;
-        higiene: Set<string>;
-        ativos: Set<string>;
-      }
-    > = {};
-
-    doacoes.forEach((doacao) => {
-      const doadorId = doacao.doadorId || "sem-doador";
-      const nomeDoador = doacao.nomeDoador || "Doador não informado";
-      const tipoDoador = doacao.tipoDoador || "Não informado";
-
-      const categoria = doacao.categoria || "Categoria não informada";
-      const categoriaGeral = definirCategoriaGeral(categoria);
-
-      const produto = doacao.produto || "Produto não informado";
-      const quantidade = Number(doacao.quantidade || 0);
-      const mesAno = obterMesAno(doacao);
-
-      if (!perfis[doadorId]) {
-        perfis[doadorId] = {
-          doadorId,
-          nomeDoador,
-          tipoDoador,
-
-          totalAlimentos: 0,
-          totalLimpeza: 0,
-          totalHigiene: 0,
-          totalOutros: 0,
-
-          quantidadeTotal: 0,
-          numeroDoacoes: 0,
-          variedadeCategorias: 0,
-
-          mesesComAlimentos: 0,
-          mesesComLimpeza: 0,
-          mesesComHigiene: 0,
-          mesesAtivos: [],
-
-          produtos: [],
-          categorias: [],
-
-          perfilPredominante: "Outros",
-          vetor: [],
-        };
-
-        mesesPorDoador[doadorId] = {
-          alimentos: new Set(),
-          limpeza: new Set(),
-          higiene: new Set(),
-          ativos: new Set(),
-        };
-      }
-
-      perfis[doadorId].quantidadeTotal += quantidade;
-      perfis[doadorId].numeroDoacoes += 1;
-
-      if (!perfis[doadorId].produtos.includes(produto)) {
-        perfis[doadorId].produtos.push(produto);
-      }
-
-      if (!perfis[doadorId].categorias.includes(categoria)) {
-        perfis[doadorId].categorias.push(categoria);
-      }
-
-      mesesPorDoador[doadorId].ativos.add(mesAno);
-
-      if (categoriaGeral === "Alimentos") {
-        perfis[doadorId].totalAlimentos += quantidade;
-        mesesPorDoador[doadorId].alimentos.add(mesAno);
-      } else if (categoriaGeral === "Limpeza") {
-        perfis[doadorId].totalLimpeza += quantidade;
-        mesesPorDoador[doadorId].limpeza.add(mesAno);
-      } else if (categoriaGeral === "Higiene") {
-        perfis[doadorId].totalHigiene += quantidade;
-        mesesPorDoador[doadorId].higiene.add(mesAno);
-      } else {
-        perfis[doadorId].totalOutros += quantidade;
-      }
-    });
-
-    return Object.values(perfis).map((perfil) => {
-      const variedadeCategorias = perfil.categorias.length;
-
-      const mesesComAlimentos =
-        mesesPorDoador[perfil.doadorId]?.alimentos.size || 0;
-
-      const mesesComLimpeza =
-        mesesPorDoador[perfil.doadorId]?.limpeza.size || 0;
-
-      const mesesComHigiene =
-        mesesPorDoador[perfil.doadorId]?.higiene.size || 0;
-
-      const mesesAtivos = Array.from(
-        mesesPorDoador[perfil.doadorId]?.ativos || []
-      ).sort();
-
-      const perfilPredominante = definirPerfilPredominante({
-        totalAlimentos: perfil.totalAlimentos,
-        totalLimpeza: perfil.totalLimpeza,
-        totalHigiene: perfil.totalHigiene,
-        totalOutros: perfil.totalOutros,
-        variedadeCategorias,
-      });
-
-      return {
-        ...perfil,
-        variedadeCategorias,
-        mesesComAlimentos,
-        mesesComLimpeza,
-        mesesComHigiene,
-        mesesAtivos,
-        perfilPredominante,
-        vetor: [
-          perfil.totalAlimentos,
-          perfil.totalLimpeza,
-          perfil.totalHigiene,
-          perfil.totalOutros,
-          perfil.quantidadeTotal,
-          perfil.numeroDoacoes,
-          variedadeCategorias,
-          mesesComAlimentos,
-          mesesComLimpeza,
-          mesesComHigiene,
-          mesesAtivos.length,
-        ],
-      };
-    });
-  };
-
-  const normalizarVetores = (dados: PerfilDoador[]) => {
-    if (dados.length === 0) return [];
-
-    const tamanhoVetor = dados[0].vetor.length;
-    const maximos = Array(tamanhoVetor).fill(0);
-
-    dados.forEach((item) => {
-      item.vetor.forEach((valor, index) => {
-        if (valor > maximos[index]) {
-          maximos[index] = valor;
-        }
-      });
-    });
-
-    return dados.map((item) => ({
-      ...item,
-      vetor: item.vetor.map((valor, index) => {
-        if (maximos[index] === 0) return 0;
-        return valor / maximos[index];
-      }),
-    }));
-  };
-
-  const calcularDistancia = (vetorA: number[], vetorB: number[]) => {
-    const soma = vetorA.reduce((total, valor, index) => {
-      const diferenca = valor - vetorB[index];
-      return total + diferenca * diferenca;
-    }, 0);
-
-    return Math.sqrt(soma);
-  };
-
-  const calcularMedia = (itens: PerfilDoador[]) => {
-    if (itens.length === 0) return [];
-
-    const tamanhoVetor = itens[0].vetor.length;
-    const soma = Array(tamanhoVetor).fill(0);
-
-    itens.forEach((item) => {
-      item.vetor.forEach((valor, index) => {
-        soma[index] += valor;
-      });
-    });
-
-    return soma.map((valor) => valor / itens.length);
-  };
-
-  const aplicarKMeans = (dadosOriginais: PerfilDoador[]) => {
-    if (dadosOriginais.length === 0) return [];
-
-    if (dadosOriginais.length === 1) {
-      return dadosOriginais.map((item) => ({
-        ...item,
-        cluster: 0,
-      }));
-    }
-
-    const dados = normalizarVetores(dadosOriginais);
-    const quantidadeClusters = Math.min(4, dados.length);
-
-    const dadosOrdenadosParaCentroides = [...dados].sort((a, b) => {
-      const prioridade = (item: PerfilDoador) => {
-        if (item.perfilPredominante === "Alimentos") return 1;
-        if (item.perfilPredominante === "Limpeza") return 2;
-        if (item.perfilPredominante === "Higiene") return 3;
-        if (item.perfilPredominante === "Variado") return 4;
-        return 5;
-      };
-
-      return prioridade(a) - prioridade(b);
-    });
-
-    let centroides = dadosOrdenadosParaCentroides
-      .slice(0, quantidadeClusters)
-      .map((item) => item.vetor);
-
-    let dadosComCluster = dados.map((item) => ({
-      ...item,
-      cluster: 0,
-    }));
-
-    for (let repeticao = 0; repeticao < 15; repeticao++) {
-      dadosComCluster = dados.map((item) => {
-        let clusterMaisProximo = 0;
-        let menorDistancia = calcularDistancia(item.vetor, centroides[0]);
-
-        centroides.forEach((centroide, index) => {
-          const distancia = calcularDistancia(item.vetor, centroide);
-
-          if (distancia < menorDistancia) {
-            menorDistancia = distancia;
-            clusterMaisProximo = index;
-          }
-        });
-
-        return {
-          ...item,
-          cluster: clusterMaisProximo,
-        };
-      });
-
-      centroides = centroides.map((centroide, index) => {
-        const itensDoCluster = dadosComCluster.filter(
-          (item) => item.cluster === index
-        );
-
-        if (itensDoCluster.length === 0) {
-          return centroide;
-        }
-
-        return calcularMedia(itensDoCluster);
-      });
-    }
-
-    return dadosOriginais.map((itemOriginal) => {
-      const itemNormalizado = dadosComCluster.find(
-        (item) => item.doadorId === itemOriginal.doadorId
-      );
-
-      return {
-        ...itemOriginal,
-        cluster: itemNormalizado?.cluster ?? 0,
-      };
-    });
-  };
-
-  const perfisDoadores = useMemo(() => montarPerfisDoadores(), [doacoes]);
-
-  const resultadoKMeans = useMemo(
-    () => aplicarKMeans(perfisDoadores),
-    [perfisDoadores]
-  );
-
-  const grupos = useMemo(() => {
-    const agrupamento: Record<number, PerfilDoador[]> = {};
-
-    resultadoKMeans.forEach((perfil) => {
-      const cluster = perfil.cluster ?? 0;
-
-      if (!agrupamento[cluster]) {
-        agrupamento[cluster] = [];
-      }
-
-      agrupamento[cluster].push(perfil);
-    });
-
-    return Object.entries(agrupamento).map(([cluster, itens]) => ({
-      cluster: Number(cluster),
-      itens,
-    }));
-  }, [resultadoKMeans]);
-
-  const totalDoadores = perfisDoadores.length;
-  const totalDoacoes = doacoes.length;
+  const itensParaApi = useMemo<ItemParaApi[]>(() => {
+    return doacoes
+      .map((doacao) => ({
+        nome: doacao.produto || doacao.nome || "Item não informado",
+        categoria: doacao.categoria || "Categoria não informada",
+        quantidade: normalizarQuantidade(doacao.quantidade),
+        unidade: doacao.tipoQuantidade || doacao.unidade || "unidades",
+        origem: doacao.origem || "doacao",
+      }))
+      .filter((item) => item.quantidade > 0);
+  }, [doacoes]);
 
   const totalSimulados = doacoes.filter(
     (item) => item.dadoSimulado === true
   ).length;
 
-  const totalAlimentos = perfisDoadores.reduce(
-    (total, item) => total + item.totalAlimentos,
-    0
-  );
+  const totalAlimentos = itensParaApi
+    .filter((item) => definirCategoriaGeral(item.categoria) === "Alimentos")
+    .reduce((total, item) => total + item.quantidade, 0);
 
-  const totalLimpeza = perfisDoadores.reduce(
-    (total, item) => total + item.totalLimpeza,
-    0
-  );
+  const totalLimpeza = itensParaApi
+    .filter((item) => definirCategoriaGeral(item.categoria) === "Limpeza")
+    .reduce((total, item) => total + item.quantidade, 0);
 
-  const totalHigiene = perfisDoadores.reduce(
-    (total, item) => total + item.totalHigiene,
-    0
-  );
+  const totalHigiene = itensParaApi
+    .filter((item) => definirCategoriaGeral(item.categoria) === "Higiene")
+    .reduce((total, item) => total + item.quantidade, 0);
 
-  const doadorMaisFrequente = [...perfisDoadores].sort(
-    (a, b) => b.numeroDoacoes - a.numeroDoacoes
-  )[0];
-
-  const identificarPerfilGrupo = (itens: PerfilDoador[]) => {
-    const alimentos = itens.reduce(
-      (total, item) => total + item.totalAlimentos,
-      0
-    );
-
-    const limpeza = itens.reduce(
-      (total, item) => total + item.totalLimpeza,
-      0
-    );
-
-    const higiene = itens.reduce(
-      (total, item) => total + item.totalHigiene,
-      0
-    );
-
-    const perfisVariados = itens.filter(
-      (item) => item.perfilPredominante === "Variado"
-    ).length;
-
-    if (perfisVariados === itens.length) {
-      return {
-        titulo: "Doadores variados",
-        descricao:
-          "Grupo com doadores que contribuem com diferentes tipos de itens ao longo dos meses.",
-        recomendacao:
-          "Pode ser usado em campanhas gerais, quando a ONG precisa de vários tipos de produtos.",
-        cor: colors.alerta,
-        fundo: colors.alertaFundo,
-      };
+  const executarAnalise = async () => {
+    if (itensParaApi.length === 0) {
+      setResultadoApi(null);
+      setErroApi(
+        "Ainda não há dados suficientes para enviar à API. Insira dados simulados ou registre doações."
+      );
+      return;
     }
 
-    if (alimentos >= limpeza && alimentos >= higiene) {
-      return {
-        titulo: "Doadores de alimentos",
-        descricao:
-          "Grupo com maior concentração de doações de alimentos essenciais.",
-        recomendacao:
-          "Indicado para pedidos de arroz, feijão, óleo, leite, carne e massas.",
-        cor: colors.sucesso,
-        fundo: colors.sucessoFundo,
-      };
-    }
+    try {
+      setCarregandoAnalise(true);
+      setErroApi("");
 
-    if (limpeza >= alimentos && limpeza >= higiene) {
-      return {
-        titulo: "Doadores de limpeza",
-        descricao:
-          "Grupo com maior concentração de produtos de limpeza.",
-        recomendacao:
-          "Indicado para pedidos de detergente, sabão, desinfetante e água sanitária.",
-        cor: colors.secundario,
-        fundo: colors.secundarioClaro,
-      };
-    }
+      const resposta = await fetch(API_KMEANS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(itensParaApi),
+      });
 
-    return {
-      titulo: "Doadores de higiene",
-      descricao:
-        "Grupo com maior concentração de itens de higiene pessoal.",
-      recomendacao:
-        "Indicado para pedidos de sabonete, pasta de dente, escova, absorvente e lenço umedecido.",
-      cor: colors.principal,
-      fundo: colors.principalClaro,
-    };
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          dados?.erro || dados?.detalhes || "Erro ao executar a análise."
+        );
+      }
+
+      setResultadoApi(dados as ResultadoApi);
+    } catch (error: any) {
+      console.log(error);
+      setResultadoApi(null);
+      setErroApi(
+        error?.message ||
+          "Não foi possível conectar com a API de K-Means no Azure."
+      );
+    } finally {
+      setCarregandoAnalise(false);
+    }
   };
 
-  const situacaoAnalise =
-    perfisDoadores.length < 2
-      ? "Dados insuficientes para clusterização"
-      : "Clusterização disponível";
-
-  const descricaoSituacao =
-    perfisDoadores.length < 2
-      ? "Cadastre ou insira pelo menos dois doadores com doações registradas."
-      : "O sistema agrupou os doadores com base nos padrões das doações.";
+  useEffect(() => {
+    if (!carregandoBase && itensParaApi.length > 0) {
+      executarAnalise();
+    }
+  }, [carregandoBase, itensParaApi.length]);
 
   const LinhaResumo = ({
     titulo,
@@ -743,17 +333,42 @@ export default function AnaliseIA() {
   );
 
   const CardSituacao = () => {
-    const temDados = perfisDoadores.length >= 2;
+    const temResultado = !!resultadoApi && resultadoApi.clusters.length > 0;
+    const estaComErro = !!erroApi;
+
+    let titulo = "API em nuvem pronta para análise";
+    let descricao =
+      "Os dados cadastrados no aplicativo são enviados para uma API em Python hospedada no Microsoft Azure.";
+    let fundo = colors.secundarioClaro;
+    let borda = colors.secundario;
+
+    if (carregandoAnalise) {
+      titulo = "Analisando dados no Azure";
+      descricao = "A API está processando os dados com o algoritmo K-Means.";
+      fundo = colors.alertaFundo;
+      borda = colors.alerta;
+    } else if (temResultado) {
+      titulo = "Clusterização gerada no Azure";
+      descricao =
+        "A API retornou os grupos de doações e recomendações para apoio à decisão.";
+      fundo = colors.sucessoFundo;
+      borda = colors.sucesso;
+    } else if (estaComErro) {
+      titulo = "Análise indisponível no momento";
+      descricao = erroApi;
+      fundo = colors.perigoFundo;
+      borda = colors.perigo;
+    }
 
     return (
       <View
         accessible
         accessibilityRole="text"
-        accessibilityLabel={`${situacaoAnalise}. ${descricaoSituacao}`}
+        accessibilityLabel={`${titulo}. ${descricao}`}
         style={{
-          backgroundColor: temDados ? colors.sucessoFundo : colors.alertaFundo,
+          backgroundColor: fundo,
           borderWidth: 1,
-          borderColor: temDados ? colors.sucesso : colors.alerta,
+          borderColor: borda,
           borderRadius: 20,
           padding: 16,
           marginBottom: 16,
@@ -778,7 +393,7 @@ export default function AnaliseIA() {
             marginBottom: 6,
           }}
         >
-          {situacaoAnalise}
+          {titulo}
         </Text>
 
         <Text
@@ -788,179 +403,104 @@ export default function AnaliseIA() {
             lineHeight: 22,
           }}
         >
-          {descricaoSituacao}
+          {descricao}
         </Text>
+
+        <Pressable
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Atualizar análise de inteligência artificial"
+          onPress={executarAnalise}
+          disabled={carregandoAnalise}
+          style={{
+            marginTop: 14,
+            backgroundColor: carregandoAnalise
+              ? colors.textoSuave
+              : colors.principal,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            borderRadius: 14,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              color: "#FFFFFF",
+              fontWeight: "900",
+              fontSize: 15,
+            }}
+          >
+            {carregandoAnalise ? "Analisando..." : "Atualizar análise"}
+          </Text>
+        </Pressable>
       </View>
     );
   };
 
-  const CardDoador = ({ perfil }: { perfil: PerfilDoador }) => (
+  const CardCluster = ({ cluster }: { cluster: ClusterApi }) => (
     <View
       accessible
       accessibilityRole="text"
-      accessibilityLabel={`Doador ${perfil.nomeDoador}. Perfil predominante ${perfil.perfilPredominante}. Total de doações ${perfil.numeroDoacoes}. Quantidade total ${perfil.quantidadeTotal}.`}
+      accessibilityLabel={`Grupo ${cluster.grupo}. ${cluster.perfil}. ${cluster.recomendacao}`}
       style={{
-        backgroundColor: colors.card,
-        borderRadius: 16,
-        padding: 14,
-        marginTop: 10,
+        backgroundColor:
+          cluster.quantidade_media < 10
+            ? colors.alertaFundo
+            : colors.sucessoFundo,
+        borderColor:
+          cluster.quantidade_media < 10 ? colors.alerta : colors.sucesso,
         borderWidth: 1,
-        borderColor: colors.borda,
+        borderRadius: 20,
+        padding: 16,
+        marginBottom: 14,
       }}
     >
       <Text
         style={{
-          fontSize: 17,
+          fontSize: 19,
           fontWeight: "900",
           color: colors.texto,
-          marginBottom: 4,
+          marginBottom: 6,
         }}
       >
-        {perfil.nomeDoador}
+        Grupo {cluster.grupo} — {cluster.perfil}
       </Text>
 
-      <Text style={{ color: colors.textoSuave, lineHeight: 21 }}>
-        Tipo: {perfil.tipoDoador}
+      <Text
+        style={{
+          color: colors.textoSuave,
+          lineHeight: 22,
+          marginBottom: 8,
+        }}
+      >
+        Categorias agrupadas: {cluster.categorias.join(", ")}
+      </Text>
+
+      <Text style={{ color: colors.textoSuave, marginBottom: 4 }}>
+        Quantidade total: {cluster.quantidade_total}
+      </Text>
+
+      <Text style={{ color: colors.textoSuave, marginBottom: 4 }}>
+        Quantidade média: {cluster.quantidade_media}
+      </Text>
+
+      <Text style={{ color: colors.textoSuave, marginBottom: 10 }}>
+        Frequência de registros: {cluster.frequencia}
       </Text>
 
       <Text
         style={{
           color: colors.texto,
           fontWeight: "800",
-          marginTop: 8,
+          lineHeight: 22,
         }}
       >
-        Perfil predominante: {perfil.perfilPredominante}
-      </Text>
-
-      <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
-        Doações registradas: {perfil.numeroDoacoes}
-      </Text>
-
-      <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
-        Quantidade total: {perfil.quantidadeTotal}
-      </Text>
-
-      <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
-        Alimentos: {perfil.totalAlimentos} • Limpeza: {perfil.totalLimpeza} •
-        Higiene: {perfil.totalHigiene}
-      </Text>
-
-      <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
-        Variedade de categorias: {perfil.variedadeCategorias}
-      </Text>
-
-      <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
-        Meses com alimentos: {perfil.mesesComAlimentos}
-      </Text>
-
-      <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
-        Meses com limpeza: {perfil.mesesComLimpeza}
-      </Text>
-
-      <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
-        Meses com higiene: {perfil.mesesComHigiene}
-      </Text>
-
-      <Text
-        style={{
-          marginTop: 8,
-          color: colors.textoSuave,
-          lineHeight: 20,
-        }}
-      >
-        Produtos doados: {perfil.produtos.join(", ")}
-      </Text>
-
-      <Text
-        style={{
-          marginTop: 8,
-          color: colors.textoSuave,
-          lineHeight: 20,
-        }}
-      >
-        Meses ativos:{" "}
-        {perfil.mesesAtivos.length > 0
-          ? perfil.mesesAtivos.map(formatarMesAno).join(", ")
-          : "Sem data informada"}
+        Recomendação: {cluster.recomendacao}
       </Text>
     </View>
   );
 
-  const CardGrupo = ({
-    grupo,
-  }: {
-    grupo: {
-      cluster: number;
-      itens: PerfilDoador[];
-    };
-  }) => {
-    const perfilGrupo = identificarPerfilGrupo(grupo.itens);
-
-    return (
-      <View
-        accessible
-        accessibilityRole="text"
-        accessibilityLabel={`${perfilGrupo.titulo}. ${perfilGrupo.descricao}. ${perfilGrupo.recomendacao}`}
-        style={{
-          backgroundColor: perfilGrupo.fundo,
-          borderColor: perfilGrupo.cor,
-          borderWidth: 1,
-          borderRadius: 20,
-          padding: 16,
-          marginBottom: 14,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 19,
-            fontWeight: "900",
-            color: colors.texto,
-            marginBottom: 6,
-          }}
-        >
-          {perfilGrupo.titulo}
-        </Text>
-
-        <Text
-          style={{
-            color: colors.textoSuave,
-            lineHeight: 22,
-            marginBottom: 8,
-          }}
-        >
-          {perfilGrupo.descricao}
-        </Text>
-
-        <Text
-          style={{
-            color: colors.texto,
-            fontWeight: "800",
-            lineHeight: 22,
-            marginBottom: 10,
-          }}
-        >
-          Recomendação: {perfilGrupo.recomendacao}
-        </Text>
-
-        <Text
-          style={{
-            color: colors.texto,
-            fontWeight: "900",
-            marginBottom: 4,
-          }}
-        >
-          Doadores neste grupo:
-        </Text>
-
-        {grupo.itens.map((perfil) => (
-          <CardDoador key={perfil.doadorId} perfil={perfil} />
-        ))}
-      </View>
-    );
-  };
-
-  if (carregando) {
+  if (carregandoBase) {
     return (
       <View
         style={[
@@ -975,10 +515,10 @@ export default function AnaliseIA() {
         <ActivityIndicator
           size="large"
           color={colors.principal}
-          accessibilityLabel="Carregando análise de inteligência artificial"
+          accessibilityLabel="Carregando dados para análise"
         />
 
-        <Text style={{ marginTop: 10 }}>Carregando análise...</Text>
+        <Text style={{ marginTop: 10 }}>Carregando dados...</Text>
       </View>
     );
   }
@@ -995,34 +535,34 @@ export default function AnaliseIA() {
       </Text>
 
       <Text style={styles.subtituloPrincipal}>
-        Agrupamento de perfis de doadores usando K-Means.
+        Agrupamento de doações usando K-Means em uma API hospedada no Azure.
       </Text>
 
       <CardSituacao />
 
-      {perfisDoadores.length < 2 ? (
+      {itensParaApi.length === 0 ? (
         <Text style={styles.listaVazia}>
-          Ainda não há doadores suficientes para gerar a clusterização. Insira
-          dados simulados ou cadastre novas doações.
+          Ainda não há dados suficientes para gerar a análise. Insira dados
+          simulados ou cadastre novas doações.
         </Text>
       ) : (
         <>
           <Bloco
-            titulo="Resumo da base analisada"
-            descricao="Dados usados para formar os grupos de perfis de doação."
+            titulo="Resumo da base enviada"
+            descricao="Dados do aplicativo enviados para a API de Machine Learning."
           >
             <LinhaResumo
-              titulo="Doadores analisados"
-              valor={totalDoadores}
-              descricao="Doadores com registros na base"
+              titulo="Registros enviados"
+              valor={itensParaApi.length}
+              descricao="Itens considerados na análise"
               tipo="info"
             />
 
             <LinhaResumo
-              titulo="Doações registradas"
-              valor={totalDoacoes}
-              descricao="Total de doações consideradas"
-              tipo="info"
+              titulo="Grupos retornados"
+              valor={resultadoApi?.total_grupos || 0}
+              descricao="Clusters calculados pela API"
+              tipo={resultadoApi ? "sucesso" : "info"}
             />
 
             <LinhaResumo
@@ -1052,24 +592,30 @@ export default function AnaliseIA() {
               descricao="Itens classificados como higiene pessoal"
               tipo={totalHigiene > 0 ? "sucesso" : "info"}
             />
-
-            {doadorMaisFrequente && (
-              <LinhaResumo
-                titulo="Doador mais frequente"
-                valor={doadorMaisFrequente.nomeDoador}
-                descricao={`${doadorMaisFrequente.numeroDoacoes} doação(ões) registradas`}
-                tipo="neutro"
-              />
-            )}
           </Bloco>
 
           <Bloco
             titulo="Grupos encontrados"
-            descricao="O K-Means agrupou doadores com comportamentos parecidos."
+            descricao="Resultado retornado pela API em Python publicada no Microsoft Azure."
           >
-            {grupos.map((grupo) => (
-              <CardGrupo key={grupo.cluster} grupo={grupo} />
-            ))}
+            {carregandoAnalise && (
+              <View style={{ alignItems: "center", paddingVertical: 16 }}>
+                <ActivityIndicator size="large" color={colors.principal} />
+                <Text style={{ marginTop: 10, color: colors.textoSuave }}>
+                  Processando K-Means na nuvem...
+                </Text>
+              </View>
+            )}
+
+            {!carregandoAnalise && resultadoApi?.clusters?.length ? (
+              resultadoApi.clusters.map((cluster) => (
+                <CardCluster key={cluster.grupo} cluster={cluster} />
+              ))
+            ) : null}
+
+            {!carregandoAnalise && !resultadoApi && erroApi ? (
+              <Text style={styles.listaVazia}>{erroApi}</Text>
+            ) : null}
           </Bloco>
 
           <Bloco
@@ -1083,11 +629,11 @@ export default function AnaliseIA() {
                 fontSize: 15,
               }}
             >
-              A clusterização mostra quais doadores possuem padrões parecidos.
-              Com isso, a ONG pode direcionar melhor seus pedidos: alimentos
-              para quem costuma doar alimentos, limpeza para quem doa produtos
-              de limpeza e higiene para quem tem histórico de doações desse
-              tipo.
+              A clusterização agrupa categorias com comportamento parecido,
+              considerando quantidade total, quantidade média e frequência de
+              registros. Com isso, a ONG consegue identificar quais tipos de
+              itens precisam de mais atenção e direcionar melhor as campanhas de
+              arrecadação.
             </Text>
           </Bloco>
 
@@ -1103,11 +649,10 @@ export default function AnaliseIA() {
               }}
             >
               Foi utilizado o algoritmo K-Means, uma técnica de aprendizagem não
-              supervisionada. Antes da clusterização, o sistema classifica cada
-              item em Alimentos, Limpeza ou Higiene com base na categoria
-              cadastrada. Depois, cada doador é transformado em um vetor numérico
-              com quantidade por tipo, frequência, variedade e meses de doação.
-              Por fim, o K-Means agrupa doadores com comportamento semelhante.
+              supervisionada. O aplicativo envia os dados de doações para uma API
+              em Python hospedada no Microsoft Azure. A API usa Pandas,
+              Scikit-learn e NumPy para processar os dados, formar os clusters e
+              retornar recomendações para apoio à decisão.
             </Text>
           </Bloco>
         </>

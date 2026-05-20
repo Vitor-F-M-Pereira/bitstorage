@@ -2,6 +2,8 @@ import { addDoc, collection, doc, setDoc } from "firebase/firestore";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
   Pressable,
   ScrollView,
@@ -36,6 +38,97 @@ const tiposDoador = [
   "Instituição",
   "Grupo comunitário",
 ];
+
+type BotaoOpcaoProps = {
+  texto: string;
+  selecionado: boolean;
+  carregando: boolean;
+  aoPressionar: () => void;
+  accessibilityHint?: string;
+};
+
+function BotaoOpcao({
+  texto,
+  selecionado,
+  carregando,
+  aoPressionar,
+  accessibilityHint,
+}: BotaoOpcaoProps) {
+  return (
+    <Pressable
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
+      accessibilityHint={accessibilityHint || "Toque duas vezes para selecionar."}
+      disabled={carregando}
+      onPress={aoPressionar}
+      style={({ pressed }) => [
+        styles.opcao,
+        {
+          minHeight: 46,
+          justifyContent: "center",
+          opacity: carregando || pressed ? 0.65 : 1,
+        },
+        selecionado && styles.opcaoSelecionada,
+      ]}
+    >
+      <Text
+        style={[
+          styles.textoOpcao,
+          { fontSize: 15 },
+          selecionado && styles.textoOpcaoSelecionada,
+        ]}
+      >
+        {texto}
+      </Text>
+    </Pressable>
+  );
+}
+
+type BlocoFormularioProps = {
+  titulo: string;
+  descricao?: string;
+  children: React.ReactNode;
+};
+
+function BlocoFormulario({
+  titulo,
+  descricao,
+  children,
+}: BlocoFormularioProps) {
+  return (
+    <View
+      accessible={false}
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 20,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: colors.borda,
+        marginBottom: 16,
+      }}
+    >
+      <Text accessibilityRole="header" style={styles.subtitulo}>
+        {titulo}
+      </Text>
+
+      {descricao && (
+        <Text
+          style={{
+            color: colors.textoSuave,
+            fontSize: 14,
+            lineHeight: 20,
+            marginBottom: 12,
+          }}
+        >
+          {descricao}
+        </Text>
+      )}
+
+      {children}
+    </View>
+  );
+}
 
 export default function Cadastro() {
   const [origem, setOrigem] = useState("Doação");
@@ -370,96 +463,18 @@ export default function Cadastro() {
     }
   };
 
-  const BotaoOpcao = ({
-    texto,
-    selecionado,
-    aoPressionar,
-    accessibilityHint,
-  }: {
-    texto: string;
-    selecionado: boolean;
-    aoPressionar: () => void;
-    accessibilityHint?: string;
-  }) => (
-    <Pressable
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
-      accessibilityHint={accessibilityHint || "Toque duas vezes para selecionar."}
-      disabled={carregando}
-      onPress={aoPressionar}
-      style={({ pressed }) => [
-        styles.opcao,
-        {
-          minHeight: 46,
-          justifyContent: "center",
-          opacity: carregando || pressed ? 0.65 : 1,
-        },
-        selecionado && styles.opcaoSelecionada,
-      ]}
-    >
-      <Text
-        style={[
-          styles.textoOpcao,
-          {
-            fontSize: 15,
-          },
-          selecionado && styles.textoOpcaoSelecionada,
-        ]}
-      >
-        {texto}
-      </Text>
-    </Pressable>
-  );
-
-  const BlocoFormulario = ({
-    titulo,
-    descricao,
-    children,
-  }: {
-    titulo: string;
-    descricao?: string;
-    children: React.ReactNode;
-  }) => (
-    <View
-      accessible={false}
-      style={{
-        backgroundColor: colors.card,
-        borderRadius: 20,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: colors.borda,
-        marginBottom: 16,
-      }}
-    >
-      <Text accessibilityRole="header" style={styles.subtitulo}>
-        {titulo}
-      </Text>
-
-      {descricao && (
-        <Text
-          style={{
-            color: colors.textoSuave,
-            fontSize: 14,
-            lineHeight: 20,
-            marginBottom: 12,
-          }}
-        >
-          {descricao}
-        </Text>
-      )}
-
-      {children}
-    </View>
-  );
-
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{
-        paddingBottom: 32,
-      }}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.fundo }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{
+          paddingBottom: 120,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
       <Text accessibilityRole="header" style={styles.titulo}>
         Cadastro
       </Text>
@@ -474,6 +489,7 @@ export default function Cadastro() {
       >
         <View style={styles.opcoes}>
           <BotaoOpcao
+            carregando={carregando}
             texto="Doação"
             selecionado={origem === "Doação"}
             accessibilityHint="Seleciona cadastro de doação e mostra os dados do doador."
@@ -484,6 +500,7 @@ export default function Cadastro() {
           />
 
           <BotaoOpcao
+            carregando={carregando}
             texto="Compra"
             selecionado={origem === "Compra"}
             accessibilityHint="Seleciona cadastro de compra e mostra o campo de valor."
@@ -519,24 +536,28 @@ export default function Cadastro() {
 
         <View style={styles.opcoes}>
           <BotaoOpcao
+            carregando={carregando}
             texto="Alimentos"
             selecionado={categoriaGeral === "Alimentos"}
             aoPressionar={() => selecionarCategoriaGeral("Alimentos")}
           />
 
           <BotaoOpcao
+            carregando={carregando}
             texto="Limpeza"
             selecionado={categoriaGeral === "Limpeza"}
             aoPressionar={() => selecionarCategoriaGeral("Limpeza")}
           />
 
           <BotaoOpcao
+            carregando={carregando}
             texto="Higiene"
             selecionado={categoriaGeral === "Higiene"}
             aoPressionar={() => selecionarCategoriaGeral("Higiene")}
           />
 
           <BotaoOpcao
+            carregando={carregando}
             texto="Outros"
             selecionado={categoriaGeral === "Outros"}
             aoPressionar={() => selecionarCategoriaGeral("Outros")}
@@ -550,6 +571,7 @@ export default function Cadastro() {
             categoriaGeral as keyof typeof categoriasPorGrupo
           ].map((item) => (
             <BotaoOpcao
+            carregando={carregando}
               key={item}
               texto={item}
               selecionado={categoria === item}
@@ -577,6 +599,7 @@ export default function Cadastro() {
         <View style={styles.opcoes}>
           {tiposQuantidade.map((item) => (
             <BotaoOpcao
+            carregando={carregando}
               key={item}
               texto={item}
               selecionado={tipoQuantidade === item}
@@ -604,6 +627,7 @@ export default function Cadastro() {
 
         <View style={styles.opcoes}>
           <BotaoOpcao
+            carregando={carregando}
             texto="Não marcar"
             selecionado={!prioridadeDoacao}
             accessibilityHint="Mantém o item sem destaque manual para doação."
@@ -614,6 +638,7 @@ export default function Cadastro() {
           />
 
           <BotaoOpcao
+            carregando={carregando}
             texto="Marcar como prioridade"
             selecionado={prioridadeDoacao}
             accessibilityHint="Marca o item para aparecer na área de itens necessários para doação."
@@ -627,12 +652,14 @@ export default function Cadastro() {
 
             <View style={styles.opcoes}>
               <BotaoOpcao
+            carregando={carregando}
                 texto="Média"
                 selecionado={nivelPrioridadeDoacao === "media"}
                 aoPressionar={() => setNivelPrioridadeDoacao("media")}
               />
 
               <BotaoOpcao
+            carregando={carregando}
                 texto="Alta"
                 selecionado={nivelPrioridadeDoacao === "alta"}
                 aoPressionar={() => setNivelPrioridadeDoacao("alta")}
@@ -700,6 +727,7 @@ export default function Cadastro() {
           <View style={styles.opcoes}>
             {tiposDoador.map((item) => (
               <BotaoOpcao
+            carregando={carregando}
                 key={item}
                 texto={item}
                 selecionado={tipoDoador === item}
@@ -770,6 +798,7 @@ export default function Cadastro() {
           Salvando cadastro...
         </Text>
       )}
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
