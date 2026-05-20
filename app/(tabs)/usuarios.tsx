@@ -255,6 +255,7 @@ export default function Usuarios() {
     (usuario) => usuario.tipoUsuario === "cozinheiro"
   ).length;
 
+
   const usuariosFiltrados = usuarios.filter((usuario) => {
     const estaAtivo = usuario.ativo !== false;
 
@@ -450,6 +451,7 @@ export default function Usuarios() {
     const estaAtivo = item.ativo !== false;
     const processandoEsteItem = carregando && idProcessando === item.id;
     const ehAdmin = item.tipoUsuario === "administrador";
+    const perfilTexto = ehAdmin ? "Administrador" : "Cozinheiro";
 
     return (
       <View
@@ -457,7 +459,7 @@ export default function Usuarios() {
         accessibilityRole="text"
         accessibilityLabel={`Usuário ${item.nome || "sem nome"}. E-mail ${
           item.email || "não informado"
-        }. Tipo ${ehAdmin ? "administrador" : "cozinheiro"}. Status ${
+        }. Tipo ${perfilTexto}. Status ${
           estaAtivo ? "ativo" : "inativo"
         }.`}
         style={{
@@ -525,7 +527,7 @@ export default function Usuarios() {
             marginTop: 10,
           }}
         >
-          Perfil: {ehAdmin ? "Administrador" : "Cozinheiro"}
+          Perfil: {perfilTexto}
         </Text>
 
         <Text style={{ color: colors.textoSuave, marginTop: 4, lineHeight: 20 }}>
@@ -688,6 +690,13 @@ export default function Usuarios() {
           descricao="Usuários de operação da despensa"
           tipo="neutro"
         />
+
+        <LinhaResumo
+          titulo="Doadores externos"
+          valor="sem login"
+          descricao="Doadores usam o formulário público Quero doar"
+          tipo="sucesso"
+        />
       </Bloco>
 
       <Bloco
@@ -779,6 +788,7 @@ export default function Usuarios() {
             accessibilityHint="Seleciona acesso para operação da despensa."
             aoPressionar={() => setTipoUsuario("cozinheiro")}
           />
+
         </View>
 
         <Pressable
@@ -864,6 +874,7 @@ export default function Usuarios() {
             selecionado={filtroStatus === "cozinheiros"}
             aoPressionar={() => setFiltroStatus("cozinheiros")}
           />
+
 
           <BotaoOpcao
             texto="Todos"

@@ -54,6 +54,10 @@ export default function Cadastro() {
   const [cidadeDoador, setCidadeDoador] = useState("Itapira");
   const [contatoDoador, setContatoDoador] = useState("");
 
+  const [prioridadeDoacao, setPrioridadeDoacao] = useState(false);
+  const [nivelPrioridadeDoacao, setNivelPrioridadeDoacao] = useState("media");
+  const [motivoPrioridadeDoacao, setMotivoPrioridadeDoacao] = useState("");
+
   const [carregando, setCarregando] = useState(false);
 
   const gerarIdDoador = (nomeInformado: string) => {
@@ -162,6 +166,10 @@ export default function Cadastro() {
     setTipoDoador("Pessoa física");
     setCidadeDoador("Itapira");
     setContatoDoador("");
+
+    setPrioridadeDoacao(false);
+    setNivelPrioridadeDoacao("media");
+    setMotivoPrioridadeDoacao("");
   };
 
   const validarCampos = () => {
@@ -266,6 +274,13 @@ export default function Cadastro() {
             : "",
 
         observacao: observacaoFinal,
+
+        prioridadeDoacao,
+        nivelPrioridadeDoacao: prioridadeDoacao ? nivelPrioridadeDoacao : "",
+        motivoPrioridadeDoacao: prioridadeDoacao
+          ? motivoPrioridadeDoacao.trim() || "Item marcado como prioridade para doação."
+          : "",
+
         criadoEm: dataRegistro,
         atualizadoEm: dataRegistro,
       });
@@ -584,6 +599,61 @@ export default function Cadastro() {
           keyboardType="numeric"
           maxLength={10}
         />
+
+        <Text style={styles.label}>Prioridade para doação</Text>
+
+        <View style={styles.opcoes}>
+          <BotaoOpcao
+            texto="Não marcar"
+            selecionado={!prioridadeDoacao}
+            accessibilityHint="Mantém o item sem destaque manual para doação."
+            aoPressionar={() => {
+              setPrioridadeDoacao(false);
+              setMotivoPrioridadeDoacao("");
+            }}
+          />
+
+          <BotaoOpcao
+            texto="Marcar como prioridade"
+            selecionado={prioridadeDoacao}
+            accessibilityHint="Marca o item para aparecer na área de itens necessários para doação."
+            aoPressionar={() => setPrioridadeDoacao(true)}
+          />
+        </View>
+
+        {prioridadeDoacao && (
+          <>
+            <Text style={styles.label}>Nível da prioridade</Text>
+
+            <View style={styles.opcoes}>
+              <BotaoOpcao
+                texto="Média"
+                selecionado={nivelPrioridadeDoacao === "media"}
+                aoPressionar={() => setNivelPrioridadeDoacao("media")}
+              />
+
+              <BotaoOpcao
+                texto="Alta"
+                selecionado={nivelPrioridadeDoacao === "alta"}
+                aoPressionar={() => setNivelPrioridadeDoacao("alta")}
+              />
+            </View>
+
+            <Text style={styles.label}>Motivo da prioridade</Text>
+
+            <TextInput
+              accessible
+              accessibilityLabel="Motivo da prioridade para doação"
+              accessibilityHint="Explique por que este item deve aparecer como prioridade para doação."
+              style={[styles.input, { minHeight: 92, textAlignVertical: "top" }]}
+              placeholder="Ex: item muito usado nas refeições da semana"
+              value={motivoPrioridadeDoacao}
+              editable={!carregando}
+              onChangeText={setMotivoPrioridadeDoacao}
+              multiline
+            />
+          </>
+        )}
       </BlocoFormulario>
 
       {origem === "Compra" && (

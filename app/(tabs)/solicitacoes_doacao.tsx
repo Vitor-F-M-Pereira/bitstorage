@@ -1,0 +1,1337 @@
+import {
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Linking,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+import { db } from "../../services/firebaseConfig";
+
+type StatusDoacao =
+  | "pendente"
+  | "em_contato"
+  | "confirmado"
+  | "recebido"
+  | "cancelado";
+
+type IntencaoDoacao = {
+  id: string;
+  protocolo?: string;
+
+  nomeDoador: string;
+  contato: string;
+  contatoOriginal?: string;
+
+  item: string;
+  produto?: string;
+  nomeProduto?: string;
+
+  categoria?: string;
+  categoriaGeral?: string;
+
+  quantidade: number | string;
+  quantidadeTexto?: string;
+  tipoQuantidade?: string;
+
+  validade?: string | null;
+  validadeData?: any;
+
+  observacao?: string | null;
+
+  status: StatusDoacao;
+  origem?: string;
+
+  criadoEm?: any;
+  atualizadoEm?: any;
+  recebidoEm?: any;
+
+  estoqueRegistrado?: boolean;
+};
+
+const statusConfig: Record<
+  StatusDoacao,
+  {
+    label: string;
+    descricao: string;
+  }
+> = {
+  pendente: {
+    label: "Pendente",
+    descricao: "Aguardando análise do administrador",
+  },
+  em_contato: {
+    label: "Em contato",
+    descricao: "A ONG já iniciou contato com o doador",
+  },
+  confirmado: {
+    label: "Confirmado",
+    descricao: "A doação foi combinada, mas ainda não recebida",
+  },
+  recebido: {
+    label: "Recebido",
+    descricao: "A doação já entrou no estoque",
+  },
+  cancelado: {
+    label: "Cancelado",
+    descricao: "A intenção foi recusada ou não aconteceu",
+  },
+};
+
+const filtros = [
+  { id: "todos", label: "Todos" },
+  { id: "pendente", label: "Pendentes" },
+  { id: "em_contato", label: "Em contato" },
+  { id: "confirmado", label: "Confirmados" },
+  { id: "recebido", label: "Recebidos" },
+  { id: "cancelado", label: "Cancelados" },
+];
+
+function normalizarTexto(valor: string) {
+  return String(valor || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function formatarTelefone(valor?: string) {
+  if (!valor) return "Não informado";
+
+  const somenteNumeros = String(valor).replace(/\D/g, "");
+
+  if (somenteNumeros.length === 11) {
+    return `(${somenteNumeros.slice(0, 2)}) ${somenteNumeros.slice(
+      2,
+      7
+    )}-${somenteNumeros.slice(7)}`;
+  }
+
+  if (somenteNumeros.length === 10) {
+    return `(${somenteNumeros.slice(0, 2)}) ${somenteNumeros.slice(
+      2,
+      6
+    )}-${somenteNumeros.slice(6)}`;
+  }
+
+  return valor;
+}
+
+function formatarDataFirestore(data: any) {
+  if (!data) return "Data não informada";
+
+  try {
+    const dataConvertida =
+      typeof data.toDate === "function" ? data.toDate() : new Date(data);
+
+    return dataConvertida.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return "Data não informada";
+  }
+}
+
+function converterDataBrasileira(data: string) {
+  if (!data) return null;
+
+  const partes = String(data).split("/");
+  if (partes.length !== 3) return null;
+
+  const dia = Number(partes[0]);
+  const mes = Number(partes[1]);
+  const ano = Number(partes[2]);
+
+  if (
+    !dia ||
+    !mes ||
+    !ano ||
+    dia < 1 ||
+    dia > 31 ||
+    mes < 1 ||
+    mes > 12 ||
+    ano < 2024
+  ) {
+    return null;
+  }
+
+  const dataConvertida = new Date(ano, mes - 1, dia);
+
+  if (
+    dataConvertida.getDate() !== dia ||
+    dataConvertida.getMonth() !== mes - 1 ||
+    dataConvertida.getFullYear() !== ano
+  ) {
+    return null;
+  }
+
+  return dataConvertida;
+}
+
+function gerarIdDoador(nomeInformado: string) {
+  return (
+    String(nomeInformado || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "doador-nao-informado"
+  );
+}
+
+function obterProduto(solicitacao: IntencaoDoacao) {
+  return (
+    String(
+      solicitacao.produto ||
+        solicitacao.nomeProduto ||
+        solicitacao.item ||
+        ""
+    ).trim() || "Produto não informado"
+  );
+}
+
+function obterQuantidadeNumerica(solicitacao: IntencaoDoacao) {
+  const valor = String(
+    solicitacao.quantidade || solicitacao.quantidadeTexto || "0"
+  )
+    .replace(",", ".")
+    .replace(/[^\d.]/g, "");
+
+  const numero = Number(valor);
+
+  if (!Number.isFinite(numero) || numero <= 0) {
+    return 1;
+  }
+
+  return numero;
+}
+
+function formatarQuantidade(solicitacao: IntencaoDoacao) {
+  const quantidade =
+    solicitacao.quantidadeTexto ||
+    String(solicitacao.quantidade || "Quantidade não informada");
+
+  const tipoQuantidade = solicitacao.tipoQuantidade || "";
+
+  return `${quantidade}${tipoQuantidade ? ` ${tipoQuantidade}` : ""}`;
+}
+
+function getStatusStyle(status: StatusDoacao) {
+  switch (status) {
+    case "pendente":
+      return {
+        fundo: "#FFF7D6",
+        texto: "#755A00",
+        borda: "#F2D36B",
+      };
+
+    case "em_contato":
+      return {
+        fundo: "#E8F1FF",
+        texto: "#235087",
+        borda: "#AFCDF7",
+      };
+
+    case "confirmado":
+      return {
+        fundo: "#EAF7EA",
+        texto: "#246B34",
+        borda: "#B7DDBB",
+      };
+
+    case "recebido":
+      return {
+        fundo: "#E8F6F1",
+        texto: "#1D6B57",
+        borda: "#A7D8C9",
+      };
+
+    case "cancelado":
+      return {
+        fundo: "#FDECEC",
+        texto: "#9A2D2D",
+        borda: "#F0B8B8",
+      };
+
+    default:
+      return {
+        fundo: "#F3F4F6",
+        texto: "#374151",
+        borda: "#D1D5DB",
+      };
+  }
+}
+
+export default function SolicitacoesDoacaoScreen() {
+  const [solicitacoes, setSolicitacoes] = useState<IntencaoDoacao[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [processandoId, setProcessandoId] = useState<string | null>(null);
+  const [filtroAtual, setFiltroAtual] = useState("todos");
+  const [busca, setBusca] = useState("");
+
+  const [modalAberto, setModalAberto] = useState(false);
+  const [solicitacaoSelecionada, setSolicitacaoSelecionada] =
+    useState<IntencaoDoacao | null>(null);
+
+  useEffect(() => {
+    const referencia = query(
+      collection(db, "intencoes_doacao"),
+      orderBy("criadoEm", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      referencia,
+      (snapshot) => {
+        const lista = snapshot.docs.map((documento) => {
+          const dados = documento.data() as any;
+
+          const produto =
+            dados.produto ||
+            dados.nomeProduto ||
+            dados.item ||
+            "Produto não informado";
+
+          return {
+            id: documento.id,
+            protocolo: dados.protocolo,
+
+            nomeDoador: dados.nomeDoador || "Doador não informado",
+            contato: dados.contato || "",
+            contatoOriginal: dados.contatoOriginal || "",
+
+            item: produto,
+            produto,
+            nomeProduto: produto,
+
+            categoria: dados.categoria || "Outros",
+            categoriaGeral: dados.categoriaGeral || "Alimentos",
+
+            quantidade:
+              dados.quantidade || dados.quantidadeTexto || "Quantidade não informada",
+            quantidadeTexto: dados.quantidadeTexto || String(dados.quantidade || ""),
+            tipoQuantidade: dados.tipoQuantidade || "unidades",
+
+            validade: dados.validade || null,
+            validadeData: dados.validadeData || null,
+
+            observacao: dados.observacao || null,
+
+            status: dados.status || "pendente",
+            origem: dados.origem,
+
+            criadoEm: dados.criadoEm,
+            atualizadoEm: dados.atualizadoEm,
+            recebidoEm: dados.recebidoEm,
+
+            estoqueRegistrado: dados.estoqueRegistrado || false,
+          };
+        });
+
+        setSolicitacoes(lista);
+        setCarregando(false);
+      },
+      (error) => {
+        console.error("Erro ao carregar solicitações de doação:", error);
+
+        Alert.alert(
+          "Erro",
+          "Não foi possível carregar as solicitações de doação."
+        );
+
+        setCarregando(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const solicitacoesFiltradas = useMemo(() => {
+    const termo = normalizarTexto(busca);
+
+    return solicitacoes.filter((solicitacao) => {
+      const passaFiltro =
+        filtroAtual === "todos" || solicitacao.status === filtroAtual;
+
+      const textoBusca = normalizarTexto(
+        `${solicitacao.nomeDoador} ${obterProduto(solicitacao)} ${
+          solicitacao.categoria
+        } ${solicitacao.contato}`
+      );
+
+      const passaBusca = termo.length === 0 || textoBusca.includes(termo);
+
+      return passaFiltro && passaBusca;
+    });
+  }, [solicitacoes, filtroAtual, busca]);
+
+  const resumo = useMemo(() => {
+    return {
+      total: solicitacoes.length,
+      pendentes: solicitacoes.filter((item) => item.status === "pendente")
+        .length,
+      confirmadas: solicitacoes.filter((item) => item.status === "confirmado")
+        .length,
+      recebidas: solicitacoes.filter((item) => item.status === "recebido")
+        .length,
+    };
+  }, [solicitacoes]);
+
+  const abrirDetalhes = (solicitacao: IntencaoDoacao) => {
+    setSolicitacaoSelecionada(solicitacao);
+    setModalAberto(true);
+  };
+
+  const fecharDetalhes = () => {
+    setModalAberto(false);
+    setSolicitacaoSelecionada(null);
+  };
+
+  const alterarStatus = async (
+    solicitacao: IntencaoDoacao,
+    novoStatus: StatusDoacao
+  ) => {
+    if (solicitacao.status === "recebido") {
+      Alert.alert(
+        "Atenção",
+        "Esta doação já foi recebida e registrada no estoque."
+      );
+      return;
+    }
+
+    if (novoStatus === "recebido") {
+      confirmarRecebimento(solicitacao);
+      return;
+    }
+
+    try {
+      setProcessandoId(solicitacao.id);
+
+      await updateDoc(doc(db, "intencoes_doacao", solicitacao.id), {
+        status: novoStatus,
+        atualizadoEm: serverTimestamp(),
+      });
+
+      if (solicitacaoSelecionada?.id === solicitacao.id) {
+        setSolicitacaoSelecionada({
+          ...solicitacao,
+          status: novoStatus,
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar status:", error);
+      Alert.alert("Erro", "Não foi possível atualizar o status da solicitação.");
+    } finally {
+      setProcessandoId(null);
+    }
+  };
+
+  const confirmarRecebimento = (solicitacao: IntencaoDoacao) => {
+    if (solicitacao.estoqueRegistrado) {
+      Alert.alert(
+        "Doação já registrada",
+        "Esta doação já foi marcada como recebida anteriormente."
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Confirmar recebimento",
+      `Deseja marcar a doação de "${obterProduto(
+        solicitacao
+      )}" como recebida e registrar no estoque?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Registrar",
+          onPress: () => receberDoacao(solicitacao),
+        },
+      ]
+    );
+  };
+
+  const receberDoacao = async (solicitacao: IntencaoDoacao) => {
+    try {
+      setProcessandoId(solicitacao.id);
+
+      const dataRegistro = new Date();
+
+      const produto = obterProduto(solicitacao);
+      const quantidadeFinal = obterQuantidadeNumerica(solicitacao);
+      const tipoQuantidade = solicitacao.tipoQuantidade || "unidades";
+
+      const validade = String(solicitacao.validade || "").trim();
+      const validadeData = validade ? converterDataBrasileira(validade) : null;
+
+      const categoriaGeral = "Alimentos";
+      const categoria = "Outros";
+
+      const nomeDoador =
+        String(solicitacao.nomeDoador || "").trim() || "Doador não informado";
+
+      const contatoDoador =
+        String(solicitacao.contatoOriginal || solicitacao.contato || "").trim() ||
+        "Não informado";
+
+      const doadorId = gerarIdDoador(nomeDoador || contatoDoador);
+
+      const observacaoFinal =
+        String(solicitacao.observacao || "").trim() ||
+        "Doação recebida pelo formulário público.";
+
+      const batch = writeBatch(db);
+
+      const alimentoRef = doc(collection(db, "alimentos"));
+
+      batch.set(alimentoRef, {
+        nome: produto,
+        categoria,
+        categoriaGeral,
+
+        quantidade: quantidadeFinal,
+        tipoQuantidade,
+
+        validade,
+        validadeData,
+
+        origem: "Doação",
+        detalheOrigem: nomeDoador,
+        precoCompra: 0,
+
+        doadorId,
+        nomeDoador,
+        tipoDoador: "Pessoa física",
+        cidadeDoador: "Não informada",
+        contatoDoador,
+
+        observacao: observacaoFinal,
+
+        criadoEm: dataRegistro,
+        atualizadoEm: dataRegistro,
+      });
+
+      const movimentacaoRef = doc(collection(db, "movimentacoes"));
+
+      batch.set(movimentacaoRef, {
+        produtoId: alimentoRef.id,
+        nomeProduto: produto,
+
+        categoria,
+        categoriaGeral,
+
+        tipo: "entrada",
+        origem: "Doação",
+        detalheOrigem: nomeDoador,
+
+        quantidade: quantidadeFinal,
+        quantidadeAnterior: 0,
+        quantidadeAtual: quantidadeFinal,
+        tipoQuantidade,
+
+        precoCompra: 0,
+
+        doadorId,
+        nomeDoador,
+        tipoDoador: "Pessoa física",
+
+        observacao: observacaoFinal,
+
+        data: dataRegistro,
+        mes: String(dataRegistro.getMonth() + 1).padStart(2, "0"),
+        ano: String(dataRegistro.getFullYear()),
+      });
+
+      const doacaoRef = doc(collection(db, "doacoes"));
+
+      batch.set(doacaoRef, {
+        doadorId,
+        nomeDoador,
+        tipoDoador: "Pessoa física",
+        cidade: "Não informada",
+        contato: contatoDoador,
+
+        produto,
+        categoriaGeral,
+        categoria,
+
+        quantidade: quantidadeFinal,
+        tipoQuantidade,
+
+        alimentoId: alimentoRef.id,
+        origem: "Doação",
+
+        data: dataRegistro,
+        mes: String(dataRegistro.getMonth() + 1).padStart(2, "0"),
+        ano: String(dataRegistro.getFullYear()),
+
+        criadoEm: dataRegistro,
+        dadoSimulado: false,
+        intencaoDoacaoId: solicitacao.id,
+      });
+
+      const doadorRef = doc(db, "doadores", doadorId);
+
+      batch.set(
+        doadorRef,
+        {
+          nome: nomeDoador,
+          tipoDoador: "Pessoa física",
+          cidade: "Não informada",
+          contato: contatoDoador,
+          atualizadoEm: dataRegistro,
+          criadoEm: dataRegistro,
+        },
+        { merge: true }
+      );
+
+      const intencaoRef = doc(db, "intencoes_doacao", solicitacao.id);
+
+      batch.update(intencaoRef, {
+        status: "recebido",
+        estoqueRegistrado: true,
+        recebidoEm: dataRegistro,
+        atualizadoEm: dataRegistro,
+        alimentoId: alimentoRef.id,
+        doacaoId: doacaoRef.id,
+        movimentacaoId: movimentacaoRef.id,
+      });
+
+      await batch.commit();
+
+      Alert.alert(
+        "Doação recebida",
+        "A doação foi registrada no estoque, no histórico e na base da Análise IA."
+      );
+
+      fecharDetalhes();
+    } catch (error) {
+      console.error("Erro ao receber doação:", error);
+
+      Alert.alert(
+        "Erro",
+        "Não foi possível registrar esta doação no estoque. Verifique as regras do Firebase e tente novamente."
+      );
+    } finally {
+      setProcessandoId(null);
+    }
+  };
+
+  const abrirWhatsApp = (contato: string) => {
+    const telefone = String(contato || "").replace(/\D/g, "");
+
+    if (!telefone) {
+      Alert.alert("Contato indisponível", "Este doador não informou telefone.");
+      return;
+    }
+
+    const mensagem = encodeURIComponent(
+      "Olá! Somos da ONG Casa da Criança. Recebemos sua intenção de doação pelo BitStorage e gostaríamos de confirmar algumas informações."
+    );
+
+    const url = `https://wa.me/55${telefone}?text=${mensagem}`;
+
+    Linking.openURL(url).catch(() => {
+      Alert.alert(
+        "Erro",
+        "Não foi possível abrir o WhatsApp neste dispositivo."
+      );
+    });
+  };
+
+  const renderSolicitacao = ({ item }: { item: IntencaoDoacao }) => {
+    const statusStyle = getStatusStyle(item.status);
+    const processando = processandoId === item.id;
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.9}
+        onPress={() => abrirDetalhes(item)}
+      >
+        <View style={styles.cardTopo}>
+          <View style={styles.cardTituloArea}>
+            <Text style={styles.itemNome}>{obterProduto(item)}</Text>
+            <Text style={styles.doadorNome}>{item.nomeDoador}</Text>
+          </View>
+
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: statusStyle.fundo,
+                borderColor: statusStyle.borda,
+              },
+            ]}
+          >
+            <Text style={[styles.statusTexto, { color: statusStyle.texto }]}>
+              {statusConfig[item.status].label}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.infoLinha}>
+          <Text style={styles.infoLabel}>Quantidade</Text>
+          <Text style={styles.infoValor}>{formatarQuantidade(item)}</Text>
+        </View>
+
+        <View style={styles.infoLinha}>
+          <Text style={styles.infoLabel}>Contato</Text>
+          <Text style={styles.infoValor}>
+            {formatarTelefone(item.contatoOriginal || item.contato)}
+          </Text>
+        </View>
+
+        <View style={styles.infoLinha}>
+          <Text style={styles.infoLabel}>Enviado em</Text>
+          <Text style={styles.infoValor}>
+            {formatarDataFirestore(item.criadoEm)}
+          </Text>
+        </View>
+
+        <View style={styles.acoesRapidas}>
+          {item.status === "pendente" && (
+            <TouchableOpacity
+              style={styles.botaoSecundario}
+              disabled={processando}
+              onPress={() => alterarStatus(item, "em_contato")}
+            >
+              <Text style={styles.botaoSecundarioTexto}>
+                {processando ? "Aguarde..." : "Em contato"}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {item.status === "em_contato" && (
+            <TouchableOpacity
+              style={styles.botaoSecundario}
+              disabled={processando}
+              onPress={() => alterarStatus(item, "confirmado")}
+            >
+              <Text style={styles.botaoSecundarioTexto}>
+                {processando ? "Aguarde..." : "Confirmar"}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {item.status === "confirmado" && (
+            <TouchableOpacity
+              style={styles.botaoPrincipal}
+              disabled={processando}
+              onPress={() => confirmarRecebimento(item)}
+            >
+              <Text style={styles.botaoPrincipalTexto}>
+                {processando ? "Registrando..." : "Receber"}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {item.status !== "recebido" && item.status !== "cancelado" && (
+            <TouchableOpacity
+              style={styles.botaoPerigo}
+              disabled={processando}
+              onPress={() => alterarStatus(item, "cancelado")}
+            >
+              <Text style={styles.botaoPerigoTexto}>Cancelar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderVazio = () => {
+    if (carregando) {
+      return (
+        <View style={styles.estadoContainer}>
+          <ActivityIndicator size="large" color="#2F6B3F" />
+          <Text style={styles.estadoTexto}>Carregando solicitações...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.estadoContainer}>
+        <Text style={styles.estadoTitulo}>Nenhuma solicitação encontrada</Text>
+        <Text style={styles.estadoTexto}>
+          Quando um doador preencher o formulário público, a solicitação
+          aparecerá aqui.
+        </Text>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.titulo}>Solicitações de Doação</Text>
+        <Text style={styles.subtitulo}>
+          Acompanhe as intenções enviadas pelos doadores e registre no estoque
+          apenas quando a doação for realmente recebida.
+        </Text>
+      </View>
+
+      <View style={styles.resumoContainer}>
+        <View style={styles.resumoCard}>
+          <Text style={styles.resumoNumero}>{resumo.total}</Text>
+          <Text style={styles.resumoLabel}>Total</Text>
+        </View>
+
+        <View style={styles.resumoCard}>
+          <Text style={styles.resumoNumero}>{resumo.pendentes}</Text>
+          <Text style={styles.resumoLabel}>Pendentes</Text>
+        </View>
+
+        <View style={styles.resumoCard}>
+          <Text style={styles.resumoNumero}>{resumo.confirmadas}</Text>
+          <Text style={styles.resumoLabel}>Confirmadas</Text>
+        </View>
+
+        <View style={styles.resumoCard}>
+          <Text style={styles.resumoNumero}>{resumo.recebidas}</Text>
+          <Text style={styles.resumoLabel}>Recebidas</Text>
+        </View>
+      </View>
+
+      <TextInput
+        style={styles.campoBusca}
+        value={busca}
+        onChangeText={setBusca}
+        placeholder="Buscar por doador, item ou contato..."
+        placeholderTextColor="#7C8A7C"
+      />
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filtrosContainer}
+      >
+        {filtros.map((filtro) => {
+          const ativo = filtroAtual === filtro.id;
+
+          return (
+            <TouchableOpacity
+              key={filtro.id}
+              style={[styles.filtroBotao, ativo && styles.filtroBotaoAtivo]}
+              onPress={() => setFiltroAtual(filtro.id)}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.filtroTexto,
+                  ativo && styles.filtroTextoAtivo,
+                ]}
+              >
+                {filtro.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <FlatList
+        data={solicitacoesFiltradas}
+        keyExtractor={(item) => item.id}
+        renderItem={renderSolicitacao}
+        contentContainerStyle={styles.lista}
+        ListEmptyComponent={renderVazio}
+        showsVerticalScrollIndicator={false}
+      />
+
+      <Modal
+        visible={modalAberto}
+        transparent
+        animationType="fade"
+        onRequestClose={fecharDetalhes}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {solicitacaoSelecionada && (
+              <>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitulo}>
+                    {obterProduto(solicitacaoSelecionada)}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={styles.modalFechar}
+                    onPress={fecharDetalhes}
+                  >
+                    <Text style={styles.modalFecharTexto}>×</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={styles.modalDescricao}>
+                    {statusConfig[solicitacaoSelecionada.status].descricao}
+                  </Text>
+
+                  <View style={styles.detalheBloco}>
+                    <Text style={styles.detalheLabel}>Doador</Text>
+                    <Text style={styles.detalheValor}>
+                      {solicitacaoSelecionada.nomeDoador}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detalheBloco}>
+                    <Text style={styles.detalheLabel}>Contato</Text>
+                    <Text style={styles.detalheValor}>
+                      {formatarTelefone(
+                        solicitacaoSelecionada.contatoOriginal ||
+                          solicitacaoSelecionada.contato
+                      )}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detalheBloco}>
+                    <Text style={styles.detalheLabel}>Quantidade</Text>
+                    <Text style={styles.detalheValor}>
+                      {formatarQuantidade(solicitacaoSelecionada)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detalheBloco}>
+                    <Text style={styles.detalheLabel}>Validade</Text>
+                    <Text style={styles.detalheValor}>
+                      {solicitacaoSelecionada.validade ||
+                        "Não informada pelo doador"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detalheBloco}>
+                    <Text style={styles.detalheLabel}>Observação</Text>
+                    <Text style={styles.detalheValor}>
+                      {solicitacaoSelecionada.observacao ||
+                        "Nenhuma observação informada"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detalheBloco}>
+                    <Text style={styles.detalheLabel}>Data de envio</Text>
+                    <Text style={styles.detalheValor}>
+                      {formatarDataFirestore(solicitacaoSelecionada.criadoEm)}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.botaoWhatsApp}
+                    onPress={() =>
+                      abrirWhatsApp(
+                        solicitacaoSelecionada.contatoOriginal ||
+                          solicitacaoSelecionada.contato
+                      )
+                    }
+                  >
+                    <Text style={styles.botaoWhatsAppTexto}>
+                      Entrar em contato pelo WhatsApp
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.modalAcoes}>
+                    {solicitacaoSelecionada.status === "pendente" && (
+                      <TouchableOpacity
+                        style={styles.botaoSecundarioGrande}
+                        disabled={processandoId === solicitacaoSelecionada.id}
+                        onPress={() =>
+                          alterarStatus(solicitacaoSelecionada, "em_contato")
+                        }
+                      >
+                        <Text style={styles.botaoSecundarioTexto}>
+                          Marcar como em contato
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {solicitacaoSelecionada.status === "em_contato" && (
+                      <TouchableOpacity
+                        style={styles.botaoSecundarioGrande}
+                        disabled={processandoId === solicitacaoSelecionada.id}
+                        onPress={() =>
+                          alterarStatus(solicitacaoSelecionada, "confirmado")
+                        }
+                      >
+                        <Text style={styles.botaoSecundarioTexto}>
+                          Marcar como confirmado
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {solicitacaoSelecionada.status === "confirmado" && (
+                      <TouchableOpacity
+                        style={styles.botaoPrincipalGrande}
+                        disabled={processandoId === solicitacaoSelecionada.id}
+                        onPress={() =>
+                          confirmarRecebimento(solicitacaoSelecionada)
+                        }
+                      >
+                        <Text style={styles.botaoPrincipalTexto}>
+                          Registrar recebimento no estoque
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {solicitacaoSelecionada.status !== "recebido" &&
+                      solicitacaoSelecionada.status !== "cancelado" && (
+                        <TouchableOpacity
+                          style={styles.botaoPerigoGrande}
+                          disabled={processandoId === solicitacaoSelecionada.id}
+                          onPress={() =>
+                            alterarStatus(solicitacaoSelecionada, "cancelado")
+                          }
+                        >
+                          <Text style={styles.botaoPerigoTexto}>
+                            Cancelar solicitação
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                  </View>
+                </ScrollView>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAF6",
+    paddingHorizontal: 18,
+    paddingTop: 18,
+  },
+  header: {
+    marginBottom: 14,
+  },
+  titulo: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#223322",
+    marginBottom: 6,
+  },
+  subtitulo: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#536153",
+  },
+  resumoContainer: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+  resumoCard: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E1E8DE",
+  },
+  resumoNumero: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#2F6B3F",
+  },
+  resumoLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#5D6B5D",
+    marginTop: 2,
+    textAlign: "center",
+  },
+  campoBusca: {
+    minHeight: 48,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#D8E2D4",
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: "#223322",
+    marginBottom: 12,
+  },
+  filtrosContainer: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  filtroBotao: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D8E2D4",
+  },
+  filtroBotaoAtivo: {
+    backgroundColor: "#2F6B3F",
+    borderColor: "#2F6B3F",
+  },
+  filtroTexto: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#4E5D4E",
+  },
+  filtroTextoAtivo: {
+    color: "#FFFFFF",
+  },
+  lista: {
+    paddingBottom: 30,
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E1E8DE",
+  },
+  cardTopo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 12,
+  },
+  cardTituloArea: {
+    flex: 1,
+  },
+  itemNome: {
+    fontSize: 19,
+    fontWeight: "900",
+    color: "#223322",
+    marginBottom: 3,
+  },
+  doadorNome: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#657365",
+  },
+  statusBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  statusTexto: {
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  infoLinha: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 5,
+  },
+  infoLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B786B",
+  },
+  infoValor: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#2B3A2B",
+    textAlign: "right",
+  },
+  acoesRapidas: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+  },
+  botaoPrincipal: {
+    backgroundColor: "#2F6B3F",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  botaoPrincipalTexto: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  botaoSecundario: {
+    backgroundColor: "#EEF6EC",
+    borderWidth: 1,
+    borderColor: "#BDD7B8",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  botaoSecundarioTexto: {
+    color: "#2F6B3F",
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  botaoPerigo: {
+    backgroundColor: "#FDECEC",
+    borderWidth: 1,
+    borderColor: "#F0B8B8",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  botaoPerigoTexto: {
+    color: "#9A2D2D",
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  estadoContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 50,
+    paddingHorizontal: 20,
+  },
+  estadoTitulo: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#223322",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  estadoTexto: {
+    fontSize: 14,
+    color: "#667466",
+    textAlign: "center",
+    lineHeight: 21,
+    marginTop: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: 18,
+  },
+  modalCard: {
+    maxHeight: "88%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 18,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 8,
+  },
+  modalTitulo: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#223322",
+  },
+  modalFechar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F1F5EF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalFecharTexto: {
+    fontSize: 26,
+    lineHeight: 28,
+    fontWeight: "700",
+    color: "#415041",
+  },
+  modalDescricao: {
+    fontSize: 14,
+    color: "#647164",
+    lineHeight: 21,
+    marginBottom: 14,
+  },
+  detalheBloco: {
+    backgroundColor: "#F8FAF6",
+    borderWidth: 1,
+    borderColor: "#E1E8DE",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+  },
+  detalheLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#6B786B",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  detalheValor: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#263826",
+    lineHeight: 21,
+  },
+  botaoWhatsApp: {
+    backgroundColor: "#E8F6F1",
+    borderWidth: 1,
+    borderColor: "#A7D8C9",
+    borderRadius: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  botaoWhatsAppTexto: {
+    color: "#1D6B57",
+    fontSize: 14,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  modalAcoes: {
+    gap: 10,
+    marginTop: 4,
+    paddingBottom: 8,
+  },
+  botaoPrincipalGrande: {
+    backgroundColor: "#2F6B3F",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  botaoSecundarioGrande: {
+    backgroundColor: "#EEF6EC",
+    borderWidth: 1,
+    borderColor: "#BDD7B8",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  botaoPerigoGrande: {
+    backgroundColor: "#FDECEC",
+    borderWidth: 1,
+    borderColor: "#F0B8B8",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+});

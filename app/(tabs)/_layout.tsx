@@ -117,6 +117,7 @@ export default function DrawerLayout() {
   const ehAdministrador = tipoUsuario === "administrador";
   const ehCozinheiro = tipoUsuario === "cozinheiro";
   const podeAcessarAreaInterna = ehAdministrador || ehCozinheiro;
+  const perfilFormatado = ehAdministrador ? "Administrador" : "Cozinheiro";
 
   const CustomDrawerContent = (props: any) => {
     return (
@@ -130,9 +131,7 @@ export default function DrawerLayout() {
         <View
           accessible
           accessibilityRole="summary"
-          accessibilityLabel={`Usuário conectado: ${nomeUsuario}. Perfil: ${
-            ehAdministrador ? "administrador" : "cozinheiro"
-          }.`}
+          accessibilityLabel={`Usuário conectado: ${nomeUsuario}. Perfil: ${perfilFormatado}.`}
           style={{
             backgroundColor: colors.card,
             borderRadius: 20,
@@ -184,7 +183,7 @@ export default function DrawerLayout() {
                 fontSize: 13,
               }}
             >
-              {ehAdministrador ? "Administrador" : "Cozinheiro"}
+              {perfilFormatado}
             </Text>
           </View>
         </View>
@@ -280,6 +279,31 @@ export default function DrawerLayout() {
         }}
       />
 
+
+      <Drawer.Screen
+        name="doacoes"
+        options={{
+          title: "Itens Prioritários",
+          drawerLabel: "Itens Prioritários",
+          href: podeAcessarAreaInterna ? undefined : null,
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="heart-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="solicitacoes_doacao"
+        options={{
+          title: "Solicitações de Doação",
+          drawerLabel: "Solicitações de Doação",
+          href: ehAdministrador ? undefined : null,
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="mail-unread-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
       <Drawer.Screen
         name="cadastro"
         options={{
@@ -353,7 +377,7 @@ export default function DrawerLayout() {
       />
 
       <Drawer.Screen
-        name="dados-simulados"
+        name="dados_simulados"
         options={{
           title: "Dados Simulados",
           drawerLabel: "Dados Simulados",
