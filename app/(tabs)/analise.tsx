@@ -31,9 +31,17 @@ type Doacao = {
 type ItemParaApi = {
   nome: string;
   categoria: string;
+  categoriaGeral: string;
   quantidade: number;
   unidade: string;
   origem: string;
+  doadorId: string;
+  nomeDoador: string;
+  cidade: string;
+  contato: string;
+  mes: string;
+  ano: string;
+  dataEntrada: string;
 };
 
 type ClusterApi = {
@@ -122,13 +130,43 @@ export default function AnaliseIA() {
 
   const itensParaApi = useMemo<ItemParaApi[]>(() => {
     return doacoes
-      .map((doacao) => ({
-        nome: doacao.produto || doacao.nome || "Item não informado",
-        categoria: doacao.categoria || "Categoria não informada",
-        quantidade: normalizarQuantidade(doacao.quantidade),
-        unidade: doacao.tipoQuantidade || doacao.unidade || "unidades",
-        origem: doacao.origem || "doacao",
-      }))
+      .map((doacao) => {
+        const categoria = doacao.categoria || "Categoria não informada";
+        const dataBruta = doacao.data;
+        const dataConvertida =
+          typeof dataBruta?.toDate === "function"
+            ? dataBruta.toDate()
+            : dataBruta
+              ? new Date(dataBruta)
+              : null;
+
+        return {
+          nome: doacao.produto || doacao.nome || "Item não informado",
+          categoria,
+          categoriaGeral: doacao.categoriaGeral || definirCategoriaGeral(categoria),
+          quantidade: normalizarQuantidade(doacao.quantidade),
+          unidade: doacao.tipoQuantidade || doacao.unidade || "unidades",
+          origem: doacao.origem || "doacao",
+          doadorId: doacao.doadorId || "",
+          nomeDoador: doacao.nomeDoador || "Doador não informado",
+          cidade: doacao.cidade || "Cidade não informada",
+          contato: doacao.contato || "Contato não informado",
+          mes:
+            doacao.mes ||
+            (dataConvertida && !Number.isNaN(dataConvertida.getTime())
+              ? String(dataConvertida.getMonth() + 1).padStart(2, "0")
+              : ""),
+          ano:
+            doacao.ano ||
+            (dataConvertida && !Number.isNaN(dataConvertida.getTime())
+              ? String(dataConvertida.getFullYear())
+              : ""),
+          dataEntrada:
+            dataConvertida && !Number.isNaN(dataConvertida.getTime())
+              ? dataConvertida.toISOString()
+              : "",
+        };
+      })
       .filter((item) => item.quantidade > 0);
   }, [doacoes]);
 

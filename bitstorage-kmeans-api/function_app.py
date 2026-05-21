@@ -1,21 +1,37 @@
 import json
+from collections import defaultdict
+from datetime import datetime
+
 import azure.functions as func
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 
-def gerar_recomendacao(categoria, quantidade_media, frequencia):
-    if quantidade_media < 10:
-        return f"Priorizar campanha de doação para {categoria}, pois a quantidade média está baixa."
+def numero(valor):
+    try:
+        return float(str(valor).replace(",", "."))
+    except Exception:
+        return 0.0
 
-    if frequencia >= 3:
-        return f"{categoria} possui boa frequência de entrada, mas deve continuar sendo monitorado."
 
-    return f"Acompanhar {categoria}, pois há pouca frequência de entrada nos registros."
+def texto(valor, padrao=""):
+    valor = str(valor or "").strip()
+    return valor if valor else padrao
+
+
+def gerar_recomendacao(categorias, frequencia, quantidade_total):
+    categoria_principal = categorias[0] if categorias else "itens diversos"
+
+    if frequencia >= 4 and quantidade_total >= 30:
+        return f"Doador com bom histórico para campanhas de {categoria_principal}."
+
+    if frequencia >= 2:
+        return f"Doador compatível com pedidos de {categoria_principal}, com recorrência moderada."
+
+    return f"Doador eventual. Pode ser considerado em campanhas específicas de {categoria_principal}."
 
 
 @app.route(route="analisar-doacoes", methods=["POST"])
@@ -25,135 +41,164 @@ def analisar_doacoes(req: func.HttpRequest) -> func.HttpResponse:
 
         if not isinstance(dados, list) or len(dados) == 0:
             return func.HttpResponse(
-                json.dumps({
-                    "erro": "Envie uma lista de itens para análise."
-                }, ensure_ascii=False),
+                json.dumps({"erro": "Envie uma lista de doações para análise."}, ensure_ascii=False),
                 status_code=400,
-                mimetype="application/json"
+                mimetype="application/json",
             )
 
-        df = pd.DataFrame(dados)
+        linhas = []
+        for item in dados:
+            categoria = texto(item.get("categoria"), "Categoria não informada")
+            linhas.append({
+                "nome": texto(item.get("nome"), "Item não informado"),
+                "categoria": categoria,
+                "categoriaGeral": texto(item.get("categoriaGeral"), "Outros"),
+                "quantidade": numero(item.get("quantidade")),
+                "unidade": texto(item.get("unidade"), "unidades"),
+                "origem": texto(item.get("origem"), "doacao"),
+                "doadorId": texto(item.get("doadorId")),
+                "nomeDoador": texto(item.get("nomeDoador"), "Doador não informado"),
+                "cidade": texto(item.get("cidade"), "Cidade não informada"),
+                "contato": texto(item.get("contato"), "Contato não informado"),
+                "mes": texto(item.get("mes")),
+                "ano": texto(item.get("ano")),
+                "dataEntrada": texto(item.get("dataEntrada")),
+            })
 
-        colunas_obrigatorias = ["nome", "categoria", "quantidade", "unidade", "origem"]
-        for coluna in colunas_obrigatorias:
-            if coluna not in df.columns:
-                return func.HttpResponse(
-                    json.dumps({
-                        "erro": f"Campo obrigatório ausente: {coluna}"
-                    }, ensure_ascii=False),
-                    status_code=400,
-                    mimetype="application/json"
-                )
+        df = pd.DataFrame(linhas)
+        df = df[df["quantidade"] > 0].copy()
 
-        df["quantidade"] = pd.to_numeric(df["quantidade"], errors="coerce").fillna(0)
-
-        resumo = (
-            df.groupby("categoria")
-            .agg(
-                quantidade_total=("quantidade", "sum"),
-                quantidade_media=("quantidade", "mean"),
-                frequencia=("nome", "count")
+        if df.empty:
+            return func.HttpResponse(
+                json.dumps({"erro": "Não há quantidades válidas para análise."}, ensure_ascii=False),
+                status_code=400,
+                mimetype="application/json",
             )
-            .reset_index()
+
+        df["chaveDoador"] = df.apply(
+            lambda row: row["doadorId"] or f"{row['nomeDoador']}|{row['contato']}",
+            axis=1,
         )
+
+        categorias_dummies = pd.get_dummies(df["categoria"], prefix="cat")
+        base = pd.concat([df[["chaveDoador", "quantidade"]], categorias_dummies], axis=1)
+
+        agregacoes = {"quantidade": ["sum", "mean", "count"]}
+        for coluna in categorias_dummies.columns:
+            agregacoes[coluna] = "sum"
+
+        resumo = base.groupby("chaveDoador").agg(agregacoes)
+        resumo.columns = ["_".join(col).strip("_") for col in resumo.columns.values]
+        resumo = resumo.reset_index()
+        resumo = resumo.rename(columns={
+            "quantidade_sum": "quantidade_total",
+            "quantidade_mean": "quantidade_media",
+            "quantidade_count": "frequencia",
+        })
 
         if len(resumo) == 1:
-            categoria = resumo.iloc[0]["categoria"]
-            quantidade_media = float(resumo.iloc[0]["quantidade_media"])
-            frequencia = int(resumo.iloc[0]["frequencia"])
+            resumo["cluster"] = 0
+        else:
+            quantidade_clusters = min(3, len(resumo))
+            colunas_features = [col for col in resumo.columns if col != "chaveDoador"]
+            features = resumo[colunas_features]
+            features_normalizadas = StandardScaler().fit_transform(features)
+            modelo = KMeans(n_clusters=quantidade_clusters, random_state=42, n_init=10)
+            resumo["cluster"] = modelo.fit_predict(features_normalizadas)
 
-            resposta = {
-                "total_registros": len(df),
-                "total_grupos": 1,
-                "clusters": [
-                    {
-                        "grupo": 1,
-                        "perfil": f"Perfil de doações relacionado a {categoria}",
-                        "categorias": [categoria],
-                        "quantidade_total": float(resumo.iloc[0]["quantidade_total"]),
-                        "quantidade_media": quantidade_media,
-                        "frequencia": frequencia,
-                        "recomendacao": gerar_recomendacao(
-                            categoria,
-                            quantidade_media,
-                            frequencia
-                        )
-                    }
-                ]
+        detalhes_doador = {}
+        for chave, grupo in df.groupby("chaveDoador"):
+            categorias = grupo["categoria"].value_counts().index.tolist()
+            produtos = grupo["nome"].value_counts().index.tolist()
+            meses = []
+            for _, row in grupo.iterrows():
+                mes_ano = f"{row['mes']}/{row['ano']}" if row["mes"] and row["ano"] else "período não informado"
+                if mes_ano not in meses:
+                    meses.append(mes_ano)
+
+            ultima = "Data não informada"
+            datas_validas = []
+            for valor in grupo["dataEntrada"].tolist():
+                try:
+                    datas_validas.append(datetime.fromisoformat(valor.replace("Z", "+00:00")))
+                except Exception:
+                    pass
+            if datas_validas:
+                ultima = max(datas_validas).strftime("%d/%m/%Y")
+
+            primeira = grupo.iloc[0]
+            detalhes_doador[chave] = {
+                "nome": primeira["nomeDoador"],
+                "cidade": primeira["cidade"],
+                "contato": primeira["contato"],
+                "categorias": categorias,
+                "produtos": produtos,
+                "meses": meses,
+                "ultima_doacao": ultima,
             }
 
-            return func.HttpResponse(
-                json.dumps(resposta, ensure_ascii=False),
-                status_code=200,
-                mimetype="application/json"
-            )
-
-        quantidade_clusters = min(3, len(resumo))
-
-        features = resumo[["quantidade_total", "quantidade_media", "frequencia"]]
-
-        scaler = StandardScaler()
-        features_normalizadas = scaler.fit_transform(features)
-
-        modelo = KMeans(
-            n_clusters=quantidade_clusters,
-            random_state=42,
-            n_init=10
-        )
-
-        resumo["cluster"] = modelo.fit_predict(features_normalizadas)
-
         clusters = []
-
         for cluster_id in sorted(resumo["cluster"].unique()):
-            grupo = resumo[resumo["cluster"] == cluster_id]
+            grupo_cluster = resumo[resumo["cluster"] == cluster_id]
+            doadores = []
+            categorias_cluster = []
 
-            categorias = grupo["categoria"].tolist()
-            quantidade_total = float(grupo["quantidade_total"].sum())
-            quantidade_media = float(grupo["quantidade_media"].mean())
-            frequencia = int(grupo["frequencia"].sum())
+            for _, row in grupo_cluster.iterrows():
+                chave = row["chaveDoador"]
+                detalhes = detalhes_doador.get(chave, {})
+                categorias = detalhes.get("categorias", [])
+                categorias_cluster.extend(categorias)
+                doadores.append({
+                    "nome": detalhes.get("nome", "Doador não informado"),
+                    "cidade": detalhes.get("cidade", "Cidade não informada"),
+                    "contato": detalhes.get("contato", "Contato não informado"),
+                    "categorias": categorias,
+                    "produtos": detalhes.get("produtos", []),
+                    "meses": detalhes.get("meses", []),
+                    "ultima_doacao": detalhes.get("ultima_doacao", "Data não informada"),
+                    "frequencia": int(row["frequencia"]),
+                    "quantidade_total": round(float(row["quantidade_total"]), 2),
+                })
 
-            categoria_principal = categorias[0]
+            categorias_ordenadas = pd.Series(categorias_cluster).value_counts().index.tolist() if categorias_cluster else []
+            frequencia_total = int(grupo_cluster["frequencia"].sum())
+            quantidade_total = float(grupo_cluster["quantidade_total"].sum())
+            quantidade_media = float(grupo_cluster["quantidade_media"].mean())
 
-            if quantidade_media < 10:
-                perfil = "Itens com baixa quantidade média"
-            elif frequencia >= 3:
-                perfil = "Itens com maior frequência de entrada"
+            if frequencia_total >= 4:
+                perfil = "Doadores recorrentes por categoria"
+            elif quantidade_total >= 30:
+                perfil = "Doadores com maior volume de contribuição"
             else:
-                perfil = "Itens com entrada menos frequente"
+                perfil = "Doadores ocasionais ou específicos"
 
             clusters.append({
                 "grupo": int(cluster_id) + 1,
                 "perfil": perfil,
-                "categorias": categorias,
-                "quantidade_total": quantidade_total,
+                "categorias": categorias_ordenadas,
+                "quantidade_total": round(quantidade_total, 2),
                 "quantidade_media": round(quantidade_media, 2),
-                "frequencia": frequencia,
-                "recomendacao": gerar_recomendacao(
-                    categoria_principal,
-                    quantidade_media,
-                    frequencia
-                )
+                "frequencia": frequencia_total,
+                "doadores": doadores,
+                "recomendacao": gerar_recomendacao(categorias_ordenadas, frequencia_total, quantidade_total),
             })
 
         resposta = {
-            "total_registros": len(df),
-            "total_grupos": quantidade_clusters,
-            "clusters": clusters
+            "total_registros": int(len(df)),
+            "total_doadores": int(df["chaveDoador"].nunique()),
+            "total_grupos": int(len(clusters)),
+            "clusters": clusters,
         }
 
         return func.HttpResponse(
             json.dumps(resposta, ensure_ascii=False),
             status_code=200,
-            mimetype="application/json"
+            mimetype="application/json",
         )
 
     except Exception as erro:
         return func.HttpResponse(
-            json.dumps({
-                "erro": "Erro ao processar análise.",
-                "detalhes": str(erro)
-            }, ensure_ascii=False),
+            json.dumps({"erro": "Erro ao processar análise.", "detalhes": str(erro)}, ensure_ascii=False),
             status_code=500,
-            mimetype="application/json"
+            mimetype="application/json",
         )

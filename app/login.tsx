@@ -282,25 +282,6 @@ export default function Login() {
             )}
           </Pressable>
 
-          <Pressable
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Abrir formulário para doação"
-            accessibilityHint="Abre uma tela pública para informar o que deseja doar."
-            disabled={carregando}
-            style={({ pressed }) => [
-              styles.botaoCancelar,
-              {
-                minHeight: 54,
-                marginTop: 12,
-                opacity: carregando || pressed ? 0.65 : 1,
-              },
-            ]}
-            onPress={() => router.push('/quero-doar')}
-          >
-            <Text style={styles.textoCancelar}>Quero doar</Text>
-          </Pressable>
-
           {carregando && (
             <Text
               accessibilityLiveRegion="polite"

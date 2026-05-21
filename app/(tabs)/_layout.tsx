@@ -295,12 +295,10 @@ export default function DrawerLayout() {
       <Drawer.Screen
         name="solicitacoes_doacao"
         options={{
-          title: "Solicitações de Doação",
-          drawerLabel: "Solicitações de Doação",
-          href: ehAdministrador ? undefined : null,
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="mail-unread-outline" size={size} color={color} />
-          ),
+          href: null,
+          drawerItemStyle: {
+            display: "none",
+          },
         }}
       />
 
