@@ -1,13 +1,15 @@
+import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   query,
   where,
   writeBatch
 } from "firebase/firestore";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,11 +19,36 @@ import {
   View,
 } from "react-native";
 
-import { db } from "../../services/firebaseConfig";
+import { auth, db } from "../../services/firebaseConfig";
 import { colors, styles } from "../../styles/estoqueStyles";
 
 export default function DadosSimulados() {
+  const [tipoUsuario, setTipoUsuario] = useState("");
+  const [carregandoPerfil, setCarregandoPerfil] = useState(true);
   const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
+      if (!usuario) {
+        setTipoUsuario("");
+        setCarregandoPerfil(false);
+        return;
+      }
+
+      try {
+        const usuarioSnap = await getDoc(doc(db, "usuarios", usuario.uid));
+        const dados = usuarioSnap.exists() ? usuarioSnap.data() : null;
+        setTipoUsuario(String(dados?.tipoUsuario || "").toLowerCase());
+      } catch (error) {
+        console.log(error);
+        setTipoUsuario("");
+      } finally {
+        setCarregandoPerfil(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const doadoresSimulados = [
     {
@@ -471,6 +498,38 @@ export default function DadosSimulados() {
       setCarregando(false);
     }
   };
+
+  if (carregandoPerfil) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color={colors.principal} />
+        <Text style={{ marginTop: 10 }}>Carregando permissões...</Text>
+      </View>
+    );
+  }
+
+  if (tipoUsuario !== "administrador") {
+    return (
+      <View style={styles.container}>
+        <Text accessibilityRole="header" style={styles.titulo}>
+          Acesso restrito
+        </Text>
+
+        <Text style={styles.subtituloPrincipal}>
+          Somente administradores podem acessar Dados Simulados.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>

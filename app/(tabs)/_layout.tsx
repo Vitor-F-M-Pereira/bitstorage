@@ -119,6 +119,10 @@ export default function DrawerLayout() {
   const podeAcessarAreaInterna = ehAdministrador || ehCozinheiro;
   const perfilFormatado = ehAdministrador ? "Administrador" : "Cozinheiro";
 
+  const ocultarDoMenu = {
+    display: "none" as const,
+  };
+
   const CustomDrawerContent = (props: any) => {
     return (
       <DrawerContentScrollView
@@ -344,6 +348,7 @@ export default function DrawerLayout() {
           title: "Histórico",
           drawerLabel: "Histórico",
           href: ehAdministrador ? undefined : null,
+          drawerItemStyle: ehAdministrador ? undefined : ocultarDoMenu,
           drawerIcon: ({ color, size }) => (
             <Ionicons name="time-outline" size={size} color={color} />
           ),
@@ -356,6 +361,7 @@ export default function DrawerLayout() {
           title: "Análise IA",
           drawerLabel: "Análise IA",
           href: ehAdministrador ? undefined : null,
+          drawerItemStyle: ehAdministrador ? undefined : ocultarDoMenu,
           drawerIcon: ({ color, size }) => (
             <Ionicons name="analytics-outline" size={size} color={color} />
           ),
@@ -368,6 +374,7 @@ export default function DrawerLayout() {
           title: "Usuários",
           drawerLabel: "Usuários",
           href: ehAdministrador ? undefined : null,
+          drawerItemStyle: ehAdministrador ? undefined : ocultarDoMenu,
           drawerIcon: ({ color, size }) => (
             <Ionicons name="people-outline" size={size} color={color} />
           ),
@@ -380,6 +387,7 @@ export default function DrawerLayout() {
           title: "Dados Simulados",
           drawerLabel: "Dados Simulados",
           href: ehAdministrador ? undefined : null,
+          drawerItemStyle: ehAdministrador ? undefined : ocultarDoMenu,
           drawerIcon: ({ color, size }) => (
             <Ionicons name="flask-outline" size={size} color={color} />
           ),

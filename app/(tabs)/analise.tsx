@@ -1,4 +1,5 @@
-import { collection, onSnapshot } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,7 +9,7 @@ import {
   View,
 } from "react-native";
 
-import { db } from "../../services/firebaseConfig";
+import { auth, db } from "../../services/firebaseConfig";
 import { colors, styles } from "../../styles/estoqueStyles";
 
 type Doacao = {
@@ -96,6 +97,8 @@ const definirCategoriaGeral = (categoriaInformada?: string) => {
 };
 
 export default function AnaliseIA() {
+  const [tipoUsuario, setTipoUsuario] = useState("");
+  const [carregandoPerfil, setCarregandoPerfil] = useState(true);
   const [doacoes, setDoacoes] = useState<Doacao[]>([]);
   const [carregandoBase, setCarregandoBase] = useState(true);
   const [carregandoAnalise, setCarregandoAnalise] = useState(false);
@@ -103,6 +106,36 @@ export default function AnaliseIA() {
   const [erroApi, setErroApi] = useState("");
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
+      if (!usuario) {
+        setTipoUsuario("");
+        setCarregandoPerfil(false);
+        return;
+      }
+
+      try {
+        const usuarioSnap = await getDoc(doc(db, "usuarios", usuario.uid));
+        const dados = usuarioSnap.exists() ? usuarioSnap.data() : null;
+        setTipoUsuario(String(dados?.tipoUsuario || "").toLowerCase());
+      } catch (error) {
+        console.log(error);
+        setTipoUsuario("");
+      } finally {
+        setCarregandoPerfil(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (carregandoPerfil) return;
+
+    if (tipoUsuario !== "administrador") {
+      setCarregandoBase(false);
+      return;
+    }
+
     const unsubscribe = onSnapshot(
       collection(db, "doacoes"),
       (snapshot) => {
@@ -126,7 +159,7 @@ export default function AnaliseIA() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [carregandoPerfil, tipoUsuario]);
 
   const itensParaApi = useMemo<ItemParaApi[]>(() => {
     return doacoes
@@ -538,7 +571,7 @@ export default function AnaliseIA() {
     </View>
   );
 
-  if (carregandoBase) {
+  if (carregandoPerfil || carregandoBase) {
     return (
       <View
         style={[
@@ -557,6 +590,20 @@ export default function AnaliseIA() {
         />
 
         <Text style={{ marginTop: 10 }}>Carregando dados...</Text>
+      </View>
+    );
+  }
+
+  if (tipoUsuario !== "administrador") {
+    return (
+      <View style={styles.container}>
+        <Text accessibilityRole="header" style={styles.titulo}>
+          Acesso restrito
+        </Text>
+
+        <Text style={styles.subtituloPrincipal}>
+          Somente administradores podem acessar a Análise IA.
+        </Text>
       </View>
     );
   }

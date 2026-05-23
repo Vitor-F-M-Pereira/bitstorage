@@ -1,18 +1,19 @@
-import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -20,7 +21,7 @@ import {
   View,
 } from "react-native";
 
-import { db, secondaryAuth } from "../../services/firebaseConfig";
+import { auth, db, secondaryAuth } from "../../services/firebaseConfig";
 import { colors, styles } from "../../styles/estoqueStyles";
 
 type Usuario = {
@@ -32,9 +33,197 @@ type Usuario = {
   [key: string]: any;
 };
 
+
+type BotaoOpcaoProps = {
+  texto: string;
+  selecionado: boolean;
+  aoPressionar: () => void;
+  disabled?: boolean;
+  accessibilityHint?: string;
+};
+
+function BotaoOpcao({
+  texto,
+  selecionado,
+  aoPressionar,
+  disabled = false,
+  accessibilityHint,
+}: BotaoOpcaoProps) {
+  return (
+    <Pressable
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
+      accessibilityHint={accessibilityHint || "Toque duas vezes para selecionar."}
+      disabled={disabled}
+      onPress={aoPressionar}
+      style={({ pressed }) => [
+        styles.opcao,
+        {
+          minHeight: 46,
+          justifyContent: "center",
+          opacity: disabled || pressed ? 0.65 : 1,
+        },
+        selecionado && styles.opcaoSelecionada,
+      ]}
+    >
+      <Text
+        style={[
+          styles.textoOpcao,
+          { fontSize: 15 },
+          selecionado && styles.textoOpcaoSelecionada,
+        ]}
+      >
+        {texto}
+      </Text>
+    </Pressable>
+  );
+}
+
+function LinhaResumo({
+  titulo,
+  valor,
+  descricao,
+  tipo = "neutro",
+}: {
+  titulo: string;
+  valor: number | string;
+  descricao: string;
+  tipo?: "neutro" | "sucesso" | "alerta" | "perigo" | "info";
+}) {
+  let corFundo = colors.card;
+  let corBorda = colors.borda;
+  let corNumero = colors.texto;
+
+  if (tipo === "sucesso") {
+    corFundo = colors.sucessoFundo;
+    corBorda = colors.sucesso;
+    corNumero = colors.sucesso;
+  }
+
+  if (tipo === "alerta") {
+    corFundo = colors.alertaFundo;
+    corBorda = colors.alerta;
+    corNumero = colors.alerta;
+  }
+
+  if (tipo === "perigo") {
+    corFundo = colors.perigoFundo;
+    corBorda = colors.perigo;
+    corNumero = colors.perigo;
+  }
+
+  if (tipo === "info") {
+    corFundo = colors.secundarioClaro;
+    corBorda = colors.secundario;
+    corNumero = colors.secundario;
+  }
+
+  return (
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${titulo}. Valor: ${valor}. ${descricao}`}
+      style={{
+        backgroundColor: corFundo,
+        borderWidth: 1,
+        borderColor: corBorda,
+        borderRadius: 16,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        marginBottom: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        minHeight: 72,
+      }}
+    >
+      <View style={{ flex: 1, paddingRight: 10 }}>
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: "900",
+            color: colors.texto,
+            marginBottom: 2,
+          }}
+        >
+          {titulo}
+        </Text>
+
+        <Text
+          style={{
+            fontSize: 13,
+            color: colors.textoSuave,
+            lineHeight: 18,
+          }}
+        >
+          {descricao}
+        </Text>
+      </View>
+
+      <Text
+        style={{
+          fontSize: 26,
+          fontWeight: "900",
+          color: corNumero,
+          minWidth: 70,
+          textAlign: "right",
+        }}
+      >
+        {valor}
+      </Text>
+    </View>
+  );
+}
+
+function Bloco({
+  titulo,
+  descricao,
+  children,
+}: {
+  titulo: string;
+  descricao?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 20,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: colors.borda,
+        marginBottom: 16,
+      }}
+    >
+      <Text accessibilityRole="header" style={styles.subtitulo}>
+        {titulo}
+      </Text>
+
+      {descricao && (
+        <Text
+          style={{
+            color: colors.textoSuave,
+            lineHeight: 20,
+            fontSize: 14,
+            marginBottom: 12,
+          }}
+        >
+          {descricao}
+        </Text>
+      )}
+
+      {children}
+    </View>
+  );
+}
+
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [tipoUsuarioLogado, setTipoUsuarioLogado] = useState("");
+  const [carregandoPerfil, setCarregandoPerfil] = useState(true);
   const [carregandoLista, setCarregandoLista] = useState(true);
+  const scrollRef = useRef<ScrollView | null>(null);
 
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
@@ -50,6 +239,37 @@ export default function Usuarios() {
   const [idProcessando, setIdProcessando] = useState<string | null>(null);
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
+      if (!usuario) {
+        setTipoUsuarioLogado("");
+        setCarregandoPerfil(false);
+        return;
+      }
+
+      try {
+        const usuarioSnap = await getDoc(doc(db, "usuarios", usuario.uid));
+        const dados = usuarioSnap.exists() ? usuarioSnap.data() : null;
+        setTipoUsuarioLogado(String(dados?.tipoUsuario || "").toLowerCase());
+      } catch (error) {
+        console.log(error);
+        setTipoUsuarioLogado("");
+      } finally {
+        setCarregandoPerfil(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (carregandoPerfil) return;
+
+    if (tipoUsuarioLogado !== "administrador") {
+      setUsuarios([]);
+      setCarregandoLista(false);
+      return;
+    }
+
     const unsubscribe = onSnapshot(
       collection(db, "usuarios"),
       (snapshot) => {
@@ -83,7 +303,7 @@ export default function Usuarios() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [carregandoPerfil, tipoUsuarioLogado]);
 
   const limparCampos = () => {
     if (carregando) return;
@@ -168,6 +388,10 @@ export default function Usuarios() {
     setEmail(usuario.email || "");
     setTipoUsuario(usuario.tipoUsuario || "cozinheiro");
     setSenha("");
+
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 360, animated: true });
+    }, 100);
   };
 
   const salvarEdicao = async () => {
@@ -272,182 +496,6 @@ export default function Usuarios() {
 
     return true;
   });
-
-  const BotaoOpcao = ({
-    texto,
-    selecionado,
-    aoPressionar,
-    accessibilityHint,
-  }: {
-    texto: string;
-    selecionado: boolean;
-    aoPressionar: () => void;
-    accessibilityHint?: string;
-  }) => (
-    <Pressable
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
-      accessibilityHint={accessibilityHint || "Toque duas vezes para selecionar."}
-      disabled={carregando}
-      onPress={aoPressionar}
-      style={({ pressed }) => [
-        styles.opcao,
-        {
-          minHeight: 46,
-          justifyContent: "center",
-          opacity: carregando || pressed ? 0.65 : 1,
-        },
-        selecionado && styles.opcaoSelecionada,
-      ]}
-    >
-      <Text
-        style={[
-          styles.textoOpcao,
-          { fontSize: 15 },
-          selecionado && styles.textoOpcaoSelecionada,
-        ]}
-      >
-        {texto}
-      </Text>
-    </Pressable>
-  );
-
-  const LinhaResumo = ({
-    titulo,
-    valor,
-    descricao,
-    tipo = "neutro",
-  }: {
-    titulo: string;
-    valor: number | string;
-    descricao: string;
-    tipo?: "neutro" | "sucesso" | "alerta" | "perigo" | "info";
-  }) => {
-    let corFundo = colors.card;
-    let corBorda = colors.borda;
-    let corNumero = colors.texto;
-
-    if (tipo === "sucesso") {
-      corFundo = colors.sucessoFundo;
-      corBorda = colors.sucesso;
-      corNumero = colors.sucesso;
-    }
-
-    if (tipo === "alerta") {
-      corFundo = colors.alertaFundo;
-      corBorda = colors.alerta;
-      corNumero = colors.alerta;
-    }
-
-    if (tipo === "perigo") {
-      corFundo = colors.perigoFundo;
-      corBorda = colors.perigo;
-      corNumero = colors.perigo;
-    }
-
-    if (tipo === "info") {
-      corFundo = colors.secundarioClaro;
-      corBorda = colors.secundario;
-      corNumero = colors.secundario;
-    }
-
-    return (
-      <View
-        accessible
-        accessibilityRole="text"
-        accessibilityLabel={`${titulo}. Valor: ${valor}. ${descricao}`}
-        style={{
-          backgroundColor: corFundo,
-          borderWidth: 1,
-          borderColor: corBorda,
-          borderRadius: 16,
-          paddingVertical: 12,
-          paddingHorizontal: 14,
-          marginBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          minHeight: 72,
-        }}
-      >
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: "900",
-              color: colors.texto,
-              marginBottom: 2,
-            }}
-          >
-            {titulo}
-          </Text>
-
-          <Text
-            style={{
-              fontSize: 13,
-              color: colors.textoSuave,
-              lineHeight: 18,
-            }}
-          >
-            {descricao}
-          </Text>
-        </View>
-
-        <Text
-          style={{
-            fontSize: 26,
-            fontWeight: "900",
-            color: corNumero,
-            minWidth: 70,
-            textAlign: "right",
-          }}
-        >
-          {valor}
-        </Text>
-      </View>
-    );
-  };
-
-  const Bloco = ({
-    titulo,
-    descricao,
-    children,
-  }: {
-    titulo: string;
-    descricao?: string;
-    children: React.ReactNode;
-  }) => (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderRadius: 20,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: colors.borda,
-        marginBottom: 16,
-      }}
-    >
-      <Text accessibilityRole="header" style={styles.subtitulo}>
-        {titulo}
-      </Text>
-
-      {descricao && (
-        <Text
-          style={{
-            color: colors.textoSuave,
-            lineHeight: 20,
-            fontSize: 14,
-            marginBottom: 12,
-          }}
-        >
-          {descricao}
-        </Text>
-      )}
-
-      {children}
-    </View>
-  );
 
   const CardUsuario = ({ item }: { item: Usuario }) => {
     const estaAtivo = item.ativo !== false;
@@ -614,7 +662,7 @@ export default function Usuarios() {
     );
   };
 
-  if (carregandoLista) {
+  if (carregandoPerfil || carregandoLista) {
     return (
       <View
         style={[
@@ -639,12 +687,27 @@ export default function Usuarios() {
     );
   }
 
+  if (tipoUsuarioLogado !== "administrador") {
+    return (
+      <View style={styles.container}>
+        <Text accessibilityRole="header" style={styles.titulo}>
+          Acesso restrito
+        </Text>
+
+        <Text style={styles.subtituloPrincipal}>
+          Somente administradores podem cadastrar e editar usuários.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.fundo }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
+      ref={scrollRef}
       style={styles.container}
       contentContainerStyle={{
         paddingBottom: 120,
@@ -698,12 +761,6 @@ export default function Usuarios() {
           tipo="neutro"
         />
 
-        <LinhaResumo
-          titulo="Doadores externos"
-          valor="sem login"
-          descricao="Doadores usam o formulário público Quero doar"
-          tipo="sucesso"
-        />
       </Bloco>
 
       <Bloco
@@ -786,6 +843,7 @@ export default function Usuarios() {
             texto="Administrador"
             selecionado={tipoUsuario === "administrador"}
             accessibilityHint="Seleciona acesso completo ao sistema."
+            disabled={carregando}
             aoPressionar={() => setTipoUsuario("administrador")}
           />
 
@@ -793,6 +851,7 @@ export default function Usuarios() {
             texto="Cozinheiro"
             selecionado={tipoUsuario === "cozinheiro"}
             accessibilityHint="Seleciona acesso para operação da despensa."
+            disabled={carregando}
             aoPressionar={() => setTipoUsuario("cozinheiro")}
           />
 
@@ -861,24 +920,28 @@ export default function Usuarios() {
           <BotaoOpcao
             texto="Ativos"
             selecionado={filtroStatus === "ativos"}
+            disabled={carregando}
             aoPressionar={() => setFiltroStatus("ativos")}
           />
 
           <BotaoOpcao
             texto="Inativos"
             selecionado={filtroStatus === "inativos"}
+            disabled={carregando}
             aoPressionar={() => setFiltroStatus("inativos")}
           />
 
           <BotaoOpcao
             texto="Administradores"
             selecionado={filtroStatus === "administradores"}
+            disabled={carregando}
             aoPressionar={() => setFiltroStatus("administradores")}
           />
 
           <BotaoOpcao
             texto="Cozinheiros"
             selecionado={filtroStatus === "cozinheiros"}
+            disabled={carregando}
             aoPressionar={() => setFiltroStatus("cozinheiros")}
           />
 
@@ -886,6 +949,7 @@ export default function Usuarios() {
           <BotaoOpcao
             texto="Todos"
             selecionado={filtroStatus === "todos"}
+            disabled={carregando}
             aoPressionar={() => setFiltroStatus("todos")}
           />
         </View>
