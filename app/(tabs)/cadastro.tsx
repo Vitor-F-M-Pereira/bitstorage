@@ -1,10 +1,19 @@
-import { addDoc, collection, doc, setDoc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+} from "firebase/firestore";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -12,6 +21,8 @@ import {
   View,
 } from "react-native";
 
+import LeitorValidade from "../../components/LeitorValidade";
+import ScannerProduto from "../../components/ScannerProduto";
 import { db } from "../../services/firebaseConfig";
 import { colors, styles } from "../../styles/estoqueStyles";
 
@@ -19,6 +30,7 @@ const categoriasPorGrupo = {
   Alimentos: [
     "Grãos e cereais",
     "Massas",
+    "Óleos",
     "Enlatados e conservas",
     "Leites e derivados",
     "Carnes e proteínas",
@@ -130,6 +142,14 @@ function BlocoFormulario({
   );
 }
 
+type DoadorCadastrado = {
+  id: string;
+  nome?: string;
+  tipoDoador?: string;
+  cidade?: string;
+  contato?: string;
+};
+
 export default function Cadastro() {
   const [origem, setOrigem] = useState("Doação");
 
@@ -140,12 +160,24 @@ export default function Cadastro() {
   const [tipoQuantidade, setTipoQuantidade] = useState("unidades");
   const [validade, setValidade] = useState("");
 
+  const [codigoBarras, setCodigoBarras] = useState("");
+  const [marca, setMarca] = useState("");
+
+  const [scannerAberto, setScannerAberto] = useState(false);
+  const [leitorValidadeAberto, setLeitorValidadeAberto] = useState(false);
+
   const [valorCompra, setValorCompra] = useState("");
 
   const [nomeDoador, setNomeDoador] = useState("");
   const [tipoDoador, setTipoDoador] = useState("Pessoa física");
   const [cidadeDoador, setCidadeDoador] = useState("Itapira");
   const [contatoDoador, setContatoDoador] = useState("");
+
+  const [modalDoadoresVisivel, setModalDoadoresVisivel] = useState(false);
+  const [doadoresCadastrados, setDoadoresCadastrados] = useState<
+    DoadorCadastrado[]
+  >([]);
+  const [carregandoDoadores, setCarregandoDoadores] = useState(false);
 
   const [prioridadeDoacao, setPrioridadeDoacao] = useState(false);
   const [nivelPrioridadeDoacao, setNivelPrioridadeDoacao] = useState("media");
@@ -243,6 +275,150 @@ export default function Cadastro() {
     setCategoria(primeiraCategoria);
   };
 
+  const aplicarProdutoEscaneado = (produto: {
+    codigo?: string;
+    nome?: string;
+    marca?: string;
+    categoria?: string;
+    validade?: string;
+    origem?: "Doação" | "Compra";
+  }) => {
+    if (produto.codigo) {
+      setCodigoBarras(produto.codigo);
+    }
+
+    if (produto.nome) {
+      setNome(produto.nome);
+    }
+
+    if (produto.marca) {
+      setMarca(produto.marca);
+    }
+
+    if (produto.validade) {
+      setValidade(produto.validade);
+    }
+
+    if (produto.origem === "Doação" || produto.origem === "Compra") {
+      setOrigem(produto.origem);
+    }
+
+    if (produto.categoria) {
+      const categoriaRecebida = produto.categoria.toLowerCase();
+
+      if (
+        categoriaRecebida.includes("óleo") ||
+        categoriaRecebida.includes("oleo") ||
+        categoriaRecebida.includes("oil")
+      ) {
+        setCategoriaGeral("Alimentos");
+        setCategoria("Óleos");
+        return;
+      }
+
+      if (
+        categoriaRecebida.includes("higiene") ||
+        categoriaRecebida.includes("personal care")
+      ) {
+        setCategoriaGeral("Higiene");
+        setCategoria("Higiene pessoal");
+        return;
+      }
+
+      if (
+        categoriaRecebida.includes("limpeza") ||
+        categoriaRecebida.includes("cleaning")
+      ) {
+        setCategoriaGeral("Limpeza");
+        setCategoria("Produtos de limpeza");
+        return;
+      }
+
+      if (
+        categoriaRecebida.includes("bebida") ||
+        categoriaRecebida.includes("beverage") ||
+        categoriaRecebida.includes("drink")
+      ) {
+        setCategoriaGeral("Alimentos");
+        setCategoria("Bebidas");
+        return;
+      }
+
+      if (
+        categoriaRecebida.includes("massa") ||
+        categoriaRecebida.includes("pasta")
+      ) {
+        setCategoriaGeral("Alimentos");
+        setCategoria("Massas");
+        return;
+      }
+
+      if (
+        categoriaRecebida.includes("leite") ||
+        categoriaRecebida.includes("dairy") ||
+        categoriaRecebida.includes("milk")
+      ) {
+        setCategoriaGeral("Alimentos");
+        setCategoria("Leites e derivados");
+        return;
+      }
+
+      if (
+        categoriaRecebida.includes("carne") ||
+        categoriaRecebida.includes("protein") ||
+        categoriaRecebida.includes("meat")
+      ) {
+        setCategoriaGeral("Alimentos");
+        setCategoria("Carnes e proteínas");
+        return;
+      }
+
+      if (
+        categoriaRecebida.includes("fruit") ||
+        categoriaRecebida.includes("vegetable") ||
+        categoriaRecebida.includes("fruta") ||
+        categoriaRecebida.includes("verdura")
+      ) {
+        setCategoriaGeral("Alimentos");
+        setCategoria("Hortifruti");
+        return;
+      }
+
+      setCategoriaGeral("Alimentos");
+      setCategoria("Grãos e cereais");
+    }
+  };
+
+  const carregarDoadores = async () => {
+    try {
+      setCarregandoDoadores(true);
+
+      const consulta = query(collection(db, "doadores"), orderBy("nome", "asc"));
+      const resultado = await getDocs(consulta);
+
+      const lista = resultado.docs.map((documento) => ({
+        id: documento.id,
+        ...documento.data(),
+      })) as DoadorCadastrado[];
+
+      setDoadoresCadastrados(lista);
+      setModalDoadoresVisivel(true);
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível carregar a lista de doadores.");
+    } finally {
+      setCarregandoDoadores(false);
+    }
+  };
+
+  const selecionarDoador = (doador: DoadorCadastrado) => {
+    setNomeDoador(doador.nome || "");
+    setTipoDoador(doador.tipoDoador || "Pessoa física");
+    setCidadeDoador(doador.cidade || "Itapira");
+    setContatoDoador(doador.contato || "");
+    setModalDoadoresVisivel(false);
+  };
+
   const limparCampos = () => {
     setOrigem("Doação");
 
@@ -252,6 +428,9 @@ export default function Cadastro() {
     setQuantidade("");
     setTipoQuantidade("unidades");
     setValidade("");
+
+    setCodigoBarras("");
+    setMarca("");
 
     setValorCompra("");
 
@@ -328,8 +507,7 @@ export default function Cadastro() {
       const precoCompra =
         origem === "Compra" ? converterValorMonetario(valorCompra) : 0;
 
-      const doadorId =
-        origem === "Doação" ? gerarIdDoador(nomeDoador) : "";
+      const doadorId = origem === "Doação" ? gerarIdDoador(nomeDoador) : "";
 
       const detalheOrigem =
         origem === "Compra"
@@ -341,6 +519,9 @@ export default function Cadastro() {
 
       const novoAlimento = await addDoc(collection(db, "alimentos"), {
         nome: nome.trim(),
+        marca: marca.trim(),
+        codigoBarras: codigoBarras.trim(),
+
         categoria,
         categoriaGeral,
 
@@ -371,7 +552,8 @@ export default function Cadastro() {
         prioridadeDoacao,
         nivelPrioridadeDoacao: prioridadeDoacao ? nivelPrioridadeDoacao : "",
         motivoPrioridadeDoacao: prioridadeDoacao
-          ? motivoPrioridadeDoacao.trim() || "Item marcado como prioridade para doação."
+          ? motivoPrioridadeDoacao.trim() ||
+            "Item marcado como prioridade para doação."
           : "",
 
         criadoEm: dataRegistro,
@@ -381,6 +563,8 @@ export default function Cadastro() {
       await addDoc(collection(db, "movimentacoes"), {
         produtoId: novoAlimento.id,
         nomeProduto: nome.trim(),
+        marca: marca.trim(),
+        codigoBarras: codigoBarras.trim(),
 
         categoria,
         categoriaGeral,
@@ -429,6 +613,9 @@ export default function Cadastro() {
           contato: contatoDoador.trim() || "Não informado",
 
           produto: nome.trim(),
+          marca: marca.trim(),
+          codigoBarras: codigoBarras.trim(),
+
           categoriaGeral,
           categoria,
 
@@ -463,11 +650,143 @@ export default function Cadastro() {
     }
   };
 
+  if (scannerAberto) {
+    return (
+      <ScannerProduto
+        onFechar={() => setScannerAberto(false)}
+        onProdutoEncontrado={aplicarProdutoEscaneado}
+      />
+    );
+  }
+
+  if (leitorValidadeAberto) {
+    return (
+      <LeitorValidade
+        onFechar={() => setLeitorValidadeAberto(false)}
+        onValidadeEncontrada={(validadeEncontrada) => {
+          setValidade(validadeEncontrada);
+        }}
+      />
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.fundo }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      <Modal
+        visible={modalDoadoresVisivel}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalDoadoresVisivel(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 22,
+              padding: 18,
+              maxHeight: "80%",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: "800",
+                color: colors.texto,
+                marginBottom: 6,
+              }}
+            >
+              Doadores cadastrados
+            </Text>
+
+            <Text
+              style={{
+                fontSize: 14,
+                color: colors.textoSuave,
+                marginBottom: 14,
+                lineHeight: 20,
+              }}
+            >
+              Selecione um doador para preencher os dados automaticamente.
+            </Text>
+
+            <ScrollView style={{ marginBottom: 10 }}>
+              {doadoresCadastrados.length === 0 ? (
+                <Text style={{ color: colors.textoSuave, marginBottom: 16 }}>
+                  Nenhum doador cadastrado ainda.
+                </Text>
+              ) : (
+                doadoresCadastrados.map((doador) => (
+                  <Pressable
+                    key={doador.id}
+                    onPress={() => selecionarDoador(doador)}
+                    style={({ pressed }) => [
+                      {
+                        padding: 14,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: colors.borda,
+                        backgroundColor: pressed ? "#F1F6EF" : "#FFFFFF",
+                        marginBottom: 10,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: "700",
+                        color: colors.texto,
+                      }}
+                    >
+                      {doador.nome || "Doador sem nome"}
+                    </Text>
+
+                    <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
+                      {doador.tipoDoador || "Tipo não informado"} •{" "}
+                      {doador.cidade || "Cidade não informada"}
+                    </Text>
+
+                    <Text style={{ color: colors.textoSuave, marginTop: 2 }}>
+                      {doador.contato || "Contato não informado"}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+
+            <Pressable
+              onPress={() => setModalDoadoresVisivel(false)}
+              style={{
+                backgroundColor: "#527853",
+                paddingVertical: 14,
+                borderRadius: 14,
+                alignItems: "center",
+                marginTop: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 16,
+                  fontWeight: "700",
+                }}
+              >
+                Fechar
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={{
@@ -475,329 +794,493 @@ export default function Cadastro() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-      <Text accessibilityRole="header" style={styles.titulo}>
-        Cadastro
-      </Text>
+        <Text accessibilityRole="header" style={styles.titulo}>
+          Cadastro
+        </Text>
 
-      <Text style={styles.subtituloPrincipal}>
-        Registre uma compra ou uma doação recebida pela despensa.
-      </Text>
+        <Text style={styles.subtituloPrincipal}>
+          Registre uma compra ou uma doação recebida pela despensa.
+        </Text>
 
-      <BlocoFormulario
-        titulo="1. Origem do item"
-        descricao="Escolha se o item entrou por compra da instituição ou por doação."
-      >
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Doação"
-            selecionado={origem === "Doação"}
-            accessibilityHint="Seleciona cadastro de doação e mostra os dados do doador."
-            aoPressionar={() => {
-              setOrigem("Doação");
-              setValorCompra("");
-            }}
-          />
-
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Compra"
-            selecionado={origem === "Compra"}
-            accessibilityHint="Seleciona cadastro de compra e mostra o campo de valor."
-            aoPressionar={() => {
-              setOrigem("Compra");
-              setNomeDoador("");
-              setTipoDoador("Pessoa física");
-              setCidadeDoador("Itapira");
-              setContatoDoador("");
-            }}
-          />
-        </View>
-      </BlocoFormulario>
-
-      <BlocoFormulario
-        titulo="2. Dados do item"
-        descricao="Informe o produto, a quantidade e a validade."
-      >
-        <Text style={styles.label}>Nome do alimento ou produto</Text>
-
-        <TextInput
-          accessible
-          accessibilityLabel="Nome do alimento ou produto"
-          accessibilityHint="Digite o nome do item que será cadastrado."
-          style={styles.input}
-          placeholder="Ex: Arroz, sabonete, detergente..."
-          value={nome}
-          editable={!carregando}
-          onChangeText={setNome}
-        />
-
-        <Text style={styles.label}>Tipo do produto</Text>
-
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Alimentos"
-            selecionado={categoriaGeral === "Alimentos"}
-            aoPressionar={() => selecionarCategoriaGeral("Alimentos")}
-          />
-
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Limpeza"
-            selecionado={categoriaGeral === "Limpeza"}
-            aoPressionar={() => selecionarCategoriaGeral("Limpeza")}
-          />
-
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Higiene"
-            selecionado={categoriaGeral === "Higiene"}
-            aoPressionar={() => selecionarCategoriaGeral("Higiene")}
-          />
-
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Outros"
-            selecionado={categoriaGeral === "Outros"}
-            aoPressionar={() => selecionarCategoriaGeral("Outros")}
-          />
-        </View>
-
-        <Text style={styles.label}>Categoria específica</Text>
-
-        <View style={styles.opcoes}>
-          {categoriasPorGrupo[
-            categoriaGeral as keyof typeof categoriasPorGrupo
-          ].map((item) => (
-            <BotaoOpcao
-            carregando={carregando}
-              key={item}
-              texto={item}
-              selecionado={categoria === item}
-              aoPressionar={() => setCategoria(item)}
-            />
-          ))}
-        </View>
-
-        <Text style={styles.label}>Quantidade</Text>
-
-        <TextInput
-          accessible
-          accessibilityLabel="Quantidade do item"
-          accessibilityHint="Digite a quantidade recebida."
-          style={styles.input}
-          placeholder="Ex: 10"
-          value={quantidade}
-          editable={!carregando}
-          onChangeText={setQuantidade}
-          keyboardType="numeric"
-        />
-
-        <Text style={styles.label}>Medida</Text>
-
-        <View style={styles.opcoes}>
-          {tiposQuantidade.map((item) => (
-            <BotaoOpcao
-            carregando={carregando}
-              key={item}
-              texto={item}
-              selecionado={tipoQuantidade === item}
-              aoPressionar={() => setTipoQuantidade(item)}
-            />
-          ))}
-        </View>
-
-        <Text style={styles.label}>Validade</Text>
-
-        <TextInput
-          accessible
-          accessibilityLabel="Data de validade"
-          accessibilityHint="Digite a validade no formato dia, mês e ano."
-          style={styles.input}
-          placeholder="DD/MM/AAAA"
-          value={validade}
-          editable={!carregando}
-          onChangeText={formatarData}
-          keyboardType="numeric"
-          maxLength={10}
-        />
-
-        <Text style={styles.label}>Prioridade para doação</Text>
-
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Não marcar"
-            selecionado={!prioridadeDoacao}
-            accessibilityHint="Mantém o item sem destaque manual para doação."
-            aoPressionar={() => {
-              setPrioridadeDoacao(false);
-              setMotivoPrioridadeDoacao("");
-            }}
-          />
-
-          <BotaoOpcao
-            carregando={carregando}
-            texto="Marcar como prioridade"
-            selecionado={prioridadeDoacao}
-            accessibilityHint="Marca o item para aparecer na área de itens necessários para doação."
-            aoPressionar={() => setPrioridadeDoacao(true)}
-          />
-        </View>
-
-        {prioridadeDoacao && (
-          <>
-            <Text style={styles.label}>Nível da prioridade</Text>
-
-            <View style={styles.opcoes}>
-              <BotaoOpcao
-            carregando={carregando}
-                texto="Média"
-                selecionado={nivelPrioridadeDoacao === "media"}
-                aoPressionar={() => setNivelPrioridadeDoacao("media")}
-              />
-
-              <BotaoOpcao
-            carregando={carregando}
-                texto="Alta"
-                selecionado={nivelPrioridadeDoacao === "alta"}
-                aoPressionar={() => setNivelPrioridadeDoacao("alta")}
-              />
-            </View>
-
-            <Text style={styles.label}>Motivo da prioridade</Text>
-
-            <TextInput
-              accessible
-              accessibilityLabel="Motivo da prioridade para doação"
-              accessibilityHint="Explique por que este item deve aparecer como prioridade para doação."
-              style={[styles.input, { minHeight: 92, textAlignVertical: "top" }]}
-              placeholder="Ex: item muito usado nas refeições da semana"
-              value={motivoPrioridadeDoacao}
-              editable={!carregando}
-              onChangeText={setMotivoPrioridadeDoacao}
-              multiline
-            />
-          </>
-        )}
-      </BlocoFormulario>
-
-      {origem === "Compra" && (
         <BlocoFormulario
-          titulo="3. Dados da compra"
-          descricao="Informe o valor pago pela instituição."
+          titulo="1. Origem do item"
+          descricao="Escolha se o item entrou por compra da instituição ou por doação."
         >
-          <Text style={styles.label}>Valor da compra</Text>
+          <View style={styles.opcoes}>
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Doação"
+              selecionado={origem === "Doação"}
+              accessibilityHint="Seleciona cadastro de doação e mostra os dados do doador."
+              aoPressionar={() => {
+                setOrigem("Doação");
+                setValorCompra("");
+              }}
+            />
+
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Compra"
+              selecionado={origem === "Compra"}
+              accessibilityHint="Seleciona cadastro de compra e mostra o campo de valor."
+              aoPressionar={() => {
+                setOrigem("Compra");
+                setNomeDoador("");
+                setTipoDoador("Pessoa física");
+                setCidadeDoador("Itapira");
+                setContatoDoador("");
+              }}
+            />
+          </View>
+        </BlocoFormulario>
+
+        <BlocoFormulario
+          titulo="2. Dados do item"
+          descricao="Informe o produto, a quantidade e a validade."
+        >
+          <Pressable
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Ler código de barras ou QR Code"
+            accessibilityHint="Abre a câmera para preencher dados do produto automaticamente."
+            disabled={carregando}
+            onPress={() => setScannerAberto(true)}
+            style={({ pressed }) => [
+              {
+                backgroundColor: "#527853",
+                paddingVertical: 14,
+                paddingHorizontal: 18,
+                borderRadius: 14,
+                marginBottom: 16,
+                alignItems: "center",
+                opacity: carregando || pressed ? 0.65 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 16,
+                fontWeight: "700",
+              }}
+            >
+              Ler código de barras / QR Code
+            </Text>
+          </Pressable>
+
+          {(codigoBarras || marca) && (
+            <View
+              style={{
+                backgroundColor: "#F1F6EF",
+                borderRadius: 14,
+                padding: 12,
+                marginBottom: 14,
+                borderWidth: 1,
+                borderColor: colors.borda,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.texto,
+                  fontWeight: "700",
+                  marginBottom: 4,
+                }}
+              >
+                Dados lidos pela câmera
+              </Text>
+
+              {codigoBarras ? (
+                <Text style={{ color: colors.textoSuave }}>
+                  Código: {codigoBarras}
+                </Text>
+              ) : null}
+
+              {marca ? (
+                <Text style={{ color: colors.textoSuave }}>
+                  Marca: {marca}
+                </Text>
+              ) : null}
+            </View>
+          )}
+
+          <Text style={styles.label}>Nome do alimento ou produto</Text>
 
           <TextInput
             accessible
-            accessibilityLabel="Valor da compra"
-            accessibilityHint="Digite o valor pago pela compra."
+            accessibilityLabel="Nome do alimento ou produto"
+            accessibilityHint="Digite o nome do item que será cadastrado."
             style={styles.input}
-            placeholder="Ex: 25,90"
-            value={valorCompra}
+            placeholder="Ex: Arroz, sabonete, detergente..."
+            value={nome}
             editable={!carregando}
-            onChangeText={setValorCompra}
+            onChangeText={setNome}
+          />
+
+          <Text style={styles.label}>Marca</Text>
+
+          <TextInput
+            accessible
+            accessibilityLabel="Marca do produto"
+            accessibilityHint="Digite a marca do produto, se houver."
+            style={styles.input}
+            placeholder="Ex: Camil, Ypê, Nestlé..."
+            value={marca}
+            editable={!carregando}
+            onChangeText={setMarca}
+          />
+
+          <Text style={styles.label}>Código de barras</Text>
+
+          <TextInput
+            accessible
+            accessibilityLabel="Código de barras"
+            accessibilityHint="Digite ou leia o código de barras do produto."
+            style={styles.input}
+            placeholder="Código lido pela câmera"
+            value={codigoBarras}
+            editable={!carregando}
+            onChangeText={setCodigoBarras}
             keyboardType="numeric"
           />
-        </BlocoFormulario>
-      )}
 
-      {origem === "Doação" && (
-        <BlocoFormulario
-          titulo="3. Dados do doador"
-          descricao="Esses dados ajudam o sistema a montar o perfil de doações para a análise IA."
-        >
-          <Text style={styles.label}>Nome do doador</Text>
-
-          <TextInput
-            accessible
-            accessibilityLabel="Nome do doador"
-            accessibilityHint="Digite o nome da pessoa, empresa ou instituição que fez a doação."
-            style={styles.input}
-            placeholder="Ex: Mercado Bom Preço, Família Silva..."
-            value={nomeDoador}
-            editable={!carregando}
-            onChangeText={setNomeDoador}
-          />
-
-          <Text style={styles.label}>Tipo do doador</Text>
+          <Text style={styles.label}>Tipo do produto</Text>
 
           <View style={styles.opcoes}>
-            {tiposDoador.map((item) => (
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Alimentos"
+              selecionado={categoriaGeral === "Alimentos"}
+              aoPressionar={() => selecionarCategoriaGeral("Alimentos")}
+            />
+
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Limpeza"
+              selecionado={categoriaGeral === "Limpeza"}
+              aoPressionar={() => selecionarCategoriaGeral("Limpeza")}
+            />
+
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Higiene"
+              selecionado={categoriaGeral === "Higiene"}
+              aoPressionar={() => selecionarCategoriaGeral("Higiene")}
+            />
+
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Outros"
+              selecionado={categoriaGeral === "Outros"}
+              aoPressionar={() => selecionarCategoriaGeral("Outros")}
+            />
+          </View>
+
+          <Text style={styles.label}>Categoria específica</Text>
+
+          <View style={styles.opcoes}>
+            {categoriasPorGrupo[
+              categoriaGeral as keyof typeof categoriasPorGrupo
+            ].map((item) => (
               <BotaoOpcao
-            carregando={carregando}
+                carregando={carregando}
                 key={item}
                 texto={item}
-                selecionado={tipoDoador === item}
-                aoPressionar={() => setTipoDoador(item)}
+                selecionado={categoria === item}
+                aoPressionar={() => setCategoria(item)}
               />
             ))}
           </View>
 
-          <Text style={styles.label}>Cidade</Text>
+          <Text style={styles.label}>Quantidade</Text>
 
           <TextInput
             accessible
-            accessibilityLabel="Cidade do doador"
-            accessibilityHint="Digite a cidade do doador."
+            accessibilityLabel="Quantidade do item"
+            accessibilityHint="Digite a quantidade recebida."
             style={styles.input}
-            placeholder="Ex: Itapira"
-            value={cidadeDoador}
+            placeholder="Ex: 10"
+            value={quantidade}
             editable={!carregando}
-            onChangeText={setCidadeDoador}
+            onChangeText={setQuantidade}
+            keyboardType="numeric"
           />
 
-          <Text style={styles.label}>Contato</Text>
+          <Text style={styles.label}>Medida</Text>
 
-          <TextInput
-            accessible
-            accessibilityLabel="Contato do doador"
-            accessibilityHint="Digite telefone, e-mail ou outra forma de contato."
-            style={styles.input}
-            placeholder="Telefone, e-mail ou contato"
-            value={contatoDoador}
-            editable={!carregando}
-            onChangeText={setContatoDoador}
-          />
+          <View style={styles.opcoes}>
+            {tiposQuantidade.map((item) => (
+              <BotaoOpcao
+                carregando={carregando}
+                key={item}
+                texto={item}
+                selecionado={tipoQuantidade === item}
+                aoPressionar={() => setTipoQuantidade(item)}
+              />
+            ))}
+          </View>
+
+          <Text style={styles.label}>Validade</Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <TextInput
+              accessible
+              accessibilityLabel="Data de validade"
+              accessibilityHint="Digite a validade no formato dia, mês e ano."
+              style={[styles.input, { flex: 1 }]}
+              placeholder="DD/MM/AAAA"
+              value={validade}
+              editable={!carregando}
+              onChangeText={formatarData}
+              keyboardType="numeric"
+              maxLength={10}
+            />
+
+            <Pressable
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Ler validade pela câmera"
+              accessibilityHint="Abre a câmera para tentar reconhecer a validade da embalagem."
+              disabled={carregando}
+              onPress={() => setLeitorValidadeAberto(true)}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: "#527853",
+                  paddingVertical: 14,
+                  paddingHorizontal: 14,
+                  borderRadius: 14,
+                  marginBottom: 12,
+                  opacity: carregando || pressed ? 0.65 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                Foto
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.label}>Prioridade para doação</Text>
+
+          <View style={styles.opcoes}>
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Não marcar"
+              selecionado={!prioridadeDoacao}
+              accessibilityHint="Mantém o item sem destaque manual para doação."
+              aoPressionar={() => {
+                setPrioridadeDoacao(false);
+                setMotivoPrioridadeDoacao("");
+              }}
+            />
+
+            <BotaoOpcao
+              carregando={carregando}
+              texto="Marcar como prioridade"
+              selecionado={prioridadeDoacao}
+              accessibilityHint="Marca o item para aparecer na área de itens necessários para doação."
+              aoPressionar={() => setPrioridadeDoacao(true)}
+            />
+          </View>
+
+          {prioridadeDoacao && (
+            <>
+              <Text style={styles.label}>Nível da prioridade</Text>
+
+              <View style={styles.opcoes}>
+                <BotaoOpcao
+                  carregando={carregando}
+                  texto="Média"
+                  selecionado={nivelPrioridadeDoacao === "media"}
+                  aoPressionar={() => setNivelPrioridadeDoacao("media")}
+                />
+
+                <BotaoOpcao
+                  carregando={carregando}
+                  texto="Alta"
+                  selecionado={nivelPrioridadeDoacao === "alta"}
+                  aoPressionar={() => setNivelPrioridadeDoacao("alta")}
+                />
+              </View>
+
+              <Text style={styles.label}>Motivo da prioridade</Text>
+
+              <TextInput
+                accessible
+                accessibilityLabel="Motivo da prioridade para doação"
+                accessibilityHint="Explique por que este item deve aparecer como prioridade para doação."
+                style={[styles.input, { minHeight: 92, textAlignVertical: "top" }]}
+                placeholder="Ex: item muito usado nas refeições da semana"
+                value={motivoPrioridadeDoacao}
+                editable={!carregando}
+                onChangeText={setMotivoPrioridadeDoacao}
+                multiline
+              />
+            </>
+          )}
         </BlocoFormulario>
-      )}
 
-      <Pressable
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={
-          origem === "Compra" ? "Cadastrar compra" : "Cadastrar doação"
-        }
-        accessibilityHint="Salva o item no estoque."
-        disabled={carregando}
-        style={({ pressed }) => [
-          styles.botaoSalvar,
-          {
-            minHeight: 54,
-            opacity: carregando || pressed ? 0.65 : 1,
-          },
-        ]}
-        onPress={cadastrarAlimento}
-      >
-        {carregando ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.textoBotao}>
-            {origem === "Compra" ? "Cadastrar compra" : "Cadastrar doação"}
+        {origem === "Compra" && (
+          <BlocoFormulario
+            titulo="3. Dados da compra"
+            descricao="Informe o valor pago pela instituição."
+          >
+            <Text style={styles.label}>Valor da compra</Text>
+
+            <TextInput
+              accessible
+              accessibilityLabel="Valor da compra"
+              accessibilityHint="Digite o valor pago pela compra."
+              style={styles.input}
+              placeholder="Ex: 25,90"
+              value={valorCompra}
+              editable={!carregando}
+              onChangeText={setValorCompra}
+              keyboardType="numeric"
+            />
+          </BlocoFormulario>
+        )}
+
+        {origem === "Doação" && (
+          <BlocoFormulario
+            titulo="3. Dados do doador"
+            descricao="Esses dados ajudam o sistema a montar o perfil de doações para a análise IA."
+          >
+            <Pressable
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Ver doadores cadastrados"
+              accessibilityHint="Abre uma lista com os doadores já cadastrados."
+              disabled={carregando || carregandoDoadores}
+              onPress={carregarDoadores}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: "#527853",
+                  paddingVertical: 14,
+                  paddingHorizontal: 18,
+                  borderRadius: 14,
+                  marginBottom: 16,
+                  alignItems: "center",
+                  opacity:
+                    carregando || carregandoDoadores || pressed ? 0.65 : 1,
+                },
+              ]}
+            >
+              {carregandoDoadores ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontSize: 16,
+                    fontWeight: "700",
+                  }}
+                >
+                  Ver doadores cadastrados
+                </Text>
+              )}
+            </Pressable>
+
+            <Text style={styles.label}>Nome do doador</Text>
+
+            <TextInput
+              accessible
+              accessibilityLabel="Nome do doador"
+              accessibilityHint="Digite o nome da pessoa, empresa ou instituição que fez a doação."
+              style={styles.input}
+              placeholder="Ex: Mercado Bom Preço, Família Silva..."
+              value={nomeDoador}
+              editable={!carregando}
+              onChangeText={setNomeDoador}
+            />
+
+            <Text style={styles.label}>Tipo do doador</Text>
+
+            <View style={styles.opcoes}>
+              {tiposDoador.map((item) => (
+                <BotaoOpcao
+                  carregando={carregando}
+                  key={item}
+                  texto={item}
+                  selecionado={tipoDoador === item}
+                  aoPressionar={() => setTipoDoador(item)}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.label}>Cidade</Text>
+
+            <TextInput
+              accessible
+              accessibilityLabel="Cidade do doador"
+              accessibilityHint="Digite a cidade do doador."
+              style={styles.input}
+              placeholder="Ex: Itapira"
+              value={cidadeDoador}
+              editable={!carregando}
+              onChangeText={setCidadeDoador}
+            />
+
+            <Text style={styles.label}>Contato</Text>
+
+            <TextInput
+              accessible
+              accessibilityLabel="Contato do doador"
+              accessibilityHint="Digite telefone, e-mail ou outra forma de contato."
+              style={styles.input}
+              placeholder="Telefone, e-mail ou contato"
+              value={contatoDoador}
+              editable={!carregando}
+              onChangeText={setContatoDoador}
+            />
+          </BlocoFormulario>
+        )}
+
+        <Pressable
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={
+            origem === "Compra" ? "Cadastrar compra" : "Cadastrar doação"
+          }
+          accessibilityHint="Salva o item no estoque."
+          disabled={carregando}
+          style={({ pressed }) => [
+            styles.botaoSalvar,
+            {
+              minHeight: 54,
+              opacity: carregando || pressed ? 0.65 : 1,
+            },
+          ]}
+          onPress={cadastrarAlimento}
+        >
+          {carregando ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.textoBotao}>
+              {origem === "Compra" ? "Cadastrar compra" : "Cadastrar doação"}
+            </Text>
+          )}
+        </Pressable>
+
+        {carregando && (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ textAlign: "center", marginTop: 10 }}
+          >
+            Salvando cadastro...
           </Text>
         )}
-      </Pressable>
-
-      {carregando && (
-        <Text
-          accessibilityLiveRegion="polite"
-          style={{ textAlign: "center", marginTop: 10 }}
-        >
-          Salvando cadastro...
-        </Text>
-      )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
