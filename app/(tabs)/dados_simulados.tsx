@@ -20,7 +20,7 @@ import {
 } from "react-native";
 
 import { auth, db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 export default function DadosSimulados() {
   const [tipoUsuario, setTipoUsuario] = useState("");

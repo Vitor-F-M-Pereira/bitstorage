@@ -25,7 +25,9 @@ import {
   View,
 } from "react-native";
 
+import CampoSelecao from "../../components/CampoSelecao";
 import { db } from "../../services/firebaseConfig";
+import { colors, shadows } from "../../styles/globalStyles";
 
 type StatusDoacao =
   | "pendente"
@@ -254,44 +256,44 @@ function getStatusStyle(status: StatusDoacao) {
   switch (status) {
     case "pendente":
       return {
-        fundo: "#FFF7D6",
-        texto: "#755A00",
-        borda: "#F2D36B",
+        fundo: colors.alertaFundo,
+        texto: colors.alerta,
+        borda: colors.alerta,
       };
 
     case "em_contato":
       return {
-        fundo: "#E8F1FF",
-        texto: "#235087",
-        borda: "#AFCDF7",
+        fundo: colors.informacaoFundo,
+        texto: colors.informacao,
+        borda: colors.informacao,
       };
 
     case "confirmado":
       return {
-        fundo: "#EAF7EA",
-        texto: "#246B34",
-        borda: "#B7DDBB",
+        fundo: colors.sucessoFundo,
+        texto: colors.sucesso,
+        borda: colors.bordaForte,
       };
 
     case "recebido":
       return {
-        fundo: "#E8F6F1",
-        texto: "#1D6B57",
-        borda: "#A7D8C9",
+        fundo: colors.informacaoFundo,
+        texto: colors.informacao,
+        borda: colors.bordaForte,
       };
 
     case "cancelado":
       return {
-        fundo: "#FDECEC",
-        texto: "#9A2D2D",
-        borda: "#F0B8B8",
+        fundo: colors.perigoFundo,
+        texto: colors.perigo,
+        borda: colors.perigo,
       };
 
     default:
       return {
-        fundo: "#F3F4F6",
-        texto: "#374151",
-        borda: "#D1D5DB",
+        fundo: colors.cinza,
+        texto: colors.textoMedio,
+        borda: colors.borda,
       };
   }
 }
@@ -822,7 +824,7 @@ export default function SolicitacoesDoacaoScreen() {
     if (carregando) {
       return (
         <View style={styles.estadoContainer}>
-          <ActivityIndicator size="large" color="#2F6B3F" />
+          <ActivityIndicator size="large" color={colors.principal} />
           <Text style={styles.estadoTexto}>Carregando solicitações...</Text>
         </View>
       );
@@ -841,7 +843,7 @@ export default function SolicitacoesDoacaoScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#F6F8F4" }}
+      style={{ flex: 1, backgroundColor: colors.fundo }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.container}>
@@ -880,37 +882,19 @@ export default function SolicitacoesDoacaoScreen() {
         value={busca}
         onChangeText={setBusca}
         placeholder="Buscar por doador, item ou contato..."
-        placeholderTextColor="#7C8A7C"
+        placeholderTextColor={colors.textoSuave}
       />
 
       <View style={styles.filtrosArea}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          bounces={false}
-          style={styles.filtrosScroll}
-          contentContainerStyle={styles.filtrosContainer}
-        >
-          {filtros.map((filtro) => {
-            const ativo = filtroAtual === filtro.id;
-
-            return (
-              <TouchableOpacity
-                key={filtro.id}
-                style={[styles.filtroBotao, ativo && styles.filtroBotaoAtivo]}
-                onPress={() => setFiltroAtual(filtro.id)}
-                activeOpacity={0.85}
-              >
-                <Text
-                  numberOfLines={1}
-                  style={[styles.filtroTexto, ativo && styles.filtroTextoAtivo]}
-                >
-                  {filtro.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <CampoSelecao
+          label="Filtrar solicitações"
+          value={filtroAtual}
+          onChange={setFiltroAtual}
+          options={filtros.map((filtro) => ({
+            label: filtro.label,
+            value: filtro.id,
+          }))}
+        />
       </View>
 
       <FlatList
@@ -1099,7 +1083,7 @@ export default function SolicitacoesDoacaoScreen() {
 
                 <Text style={styles.modalDescricao}>
                   Antes de registrar no estoque, selecione a categoria correta
-                  da doação de "{obterProduto(solicitacaoRecebimento)}".
+                  da doação de {obterProduto(solicitacaoRecebimento)}.
                 </Text>
 
                 <ScrollView showsVerticalScrollIndicator={false}>
@@ -1215,7 +1199,7 @@ export default function SolicitacoesDoacaoScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAF6",
+    backgroundColor: colors.fundo,
     paddingHorizontal: 18,
     paddingTop: 18,
   },
@@ -1225,13 +1209,13 @@ const styles = StyleSheet.create({
   titulo: {
     fontSize: 26,
     fontWeight: "800",
-    color: "#223322",
+    color: colors.texto,
     marginBottom: 6,
   },
   subtitulo: {
     fontSize: 15,
     lineHeight: 22,
-    color: "#536153",
+    color: colors.textoSuave,
   },
   resumoContainer: {
     flexDirection: "row",
@@ -1240,35 +1224,36 @@ const styles = StyleSheet.create({
   },
   resumoCard: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 8,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E1E8DE",
+    borderColor: colors.borda,
+    ...shadows.soft,
   },
   resumoNumero: {
     fontSize: 22,
     fontWeight: "900",
-    color: "#2F6B3F",
+    color: colors.principal,
   },
   resumoLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#5D6B5D",
+    color: colors.textoSuave,
     marginTop: 2,
     textAlign: "center",
   },
   campoBusca: {
     minHeight: 48,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#D8E2D4",
+    borderColor: colors.borda,
     paddingHorizontal: 14,
     fontSize: 15,
-    color: "#223322",
+    color: colors.texto,
     marginBottom: 12,
   },
   filtrosArea: {
@@ -1289,34 +1274,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#D8E2D4",
+    borderColor: colors.borda,
     alignItems: "center",
     justifyContent: "center",
   },
   filtroBotaoAtivo: {
-    backgroundColor: "#2F6B3F",
-    borderColor: "#2F6B3F",
+    backgroundColor: colors.principal,
+    borderColor: colors.principal,
   },
   filtroTexto: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#4E5D4E",
+    color: colors.textoSuave,
   },
   filtroTextoAtivo: {
-    color: "#FFFFFF",
+    color: colors.card,
   },
   lista: {
     paddingBottom: 30,
   },
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#E1E8DE",
+    borderColor: colors.borda,
   },
   cardTopo: {
     flexDirection: "row",
@@ -1331,13 +1316,13 @@ const styles = StyleSheet.create({
   itemNome: {
     fontSize: 19,
     fontWeight: "900",
-    color: "#223322",
+    color: colors.texto,
     marginBottom: 3,
   },
   doadorNome: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#657365",
+    color: colors.textoSuave,
   },
   statusBadge: {
     borderWidth: 1,
@@ -1358,13 +1343,13 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#6B786B",
+    color: colors.textoSuave,
   },
   infoValor: {
     flex: 1,
     fontSize: 13,
     fontWeight: "800",
-    color: "#2B3A2B",
+    color: colors.texto,
     textAlign: "right",
   },
   acoesRapidas: {
@@ -1374,41 +1359,41 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   botaoPrincipal: {
-    backgroundColor: "#2F6B3F",
+    backgroundColor: colors.principal,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   botaoPrincipalTexto: {
-    color: "#FFFFFF",
+    color: colors.card,
     fontSize: 13,
     fontWeight: "900",
     textAlign: "center",
   },
   botaoSecundario: {
-    backgroundColor: "#EEF6EC",
+    backgroundColor: colors.principalClaro,
     borderWidth: 1,
-    borderColor: "#BDD7B8",
+    borderColor: colors.bordaForte,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   botaoSecundarioTexto: {
-    color: "#2F6B3F",
+    color: colors.principal,
     fontSize: 13,
     fontWeight: "900",
     textAlign: "center",
   },
   botaoPerigo: {
-    backgroundColor: "#FDECEC",
+    backgroundColor: colors.perigoFundo,
     borderWidth: 1,
-    borderColor: "#F0B8B8",
+    borderColor: colors.perigo,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   botaoPerigoTexto: {
-    color: "#9A2D2D",
+    color: colors.perigo,
     fontSize: 13,
     fontWeight: "900",
     textAlign: "center",
@@ -1422,13 +1407,13 @@ const styles = StyleSheet.create({
   estadoTitulo: {
     fontSize: 18,
     fontWeight: "900",
-    color: "#223322",
+    color: colors.texto,
     marginBottom: 8,
     textAlign: "center",
   },
   estadoTexto: {
     fontSize: 14,
-    color: "#667466",
+    color: colors.textoSuave,
     textAlign: "center",
     lineHeight: 21,
     marginTop: 8,
@@ -1441,7 +1426,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     maxHeight: "88%",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderRadius: 24,
     padding: 18,
   },
@@ -1456,13 +1441,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 22,
     fontWeight: "900",
-    color: "#223322",
+    color: colors.texto,
   },
   modalFechar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#F1F5EF",
+    backgroundColor: colors.fundoAlternativo,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1470,18 +1455,18 @@ const styles = StyleSheet.create({
     fontSize: 26,
     lineHeight: 28,
     fontWeight: "700",
-    color: "#415041",
+    color: colors.textoMedio,
   },
   modalDescricao: {
     fontSize: 14,
-    color: "#647164",
+    color: colors.textoSuave,
     lineHeight: 21,
     marginBottom: 14,
   },
   detalheBloco: {
-    backgroundColor: "#F8FAF6",
+    backgroundColor: colors.fundo,
     borderWidth: 1,
-    borderColor: "#E1E8DE",
+    borderColor: colors.borda,
     borderRadius: 16,
     padding: 12,
     marginBottom: 10,
@@ -1489,20 +1474,20 @@ const styles = StyleSheet.create({
   detalheLabel: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#6B786B",
+    color: colors.textoSuave,
     marginBottom: 4,
     textTransform: "uppercase",
   },
   detalheValor: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#263826",
+    color: colors.texto,
     lineHeight: 21,
   },
   secaoTitulo: {
     fontSize: 14,
     fontWeight: "900",
-    color: "#263826",
+    color: colors.texto,
     marginTop: 10,
     marginBottom: 8,
   },
@@ -1513,29 +1498,29 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   opcaoBotao: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#D8E2D4",
+    borderColor: colors.borda,
     borderRadius: 999,
     paddingHorizontal: 13,
     paddingVertical: 10,
   },
   opcaoBotaoAtivo: {
-    backgroundColor: "#2F6B3F",
-    borderColor: "#2F6B3F",
+    backgroundColor: colors.principal,
+    borderColor: colors.principal,
   },
   opcaoTexto: {
     fontSize: 13,
     fontWeight: "900",
-    color: "#4E5D4E",
+    color: colors.textoSuave,
   },
   opcaoTextoAtivo: {
-    color: "#FFFFFF",
+    color: colors.card,
   },
   resumoRecebimento: {
-    backgroundColor: "#F8FAF6",
+    backgroundColor: colors.fundo,
     borderWidth: 1,
-    borderColor: "#E1E8DE",
+    borderColor: colors.borda,
     borderRadius: 16,
     padding: 12,
     marginTop: 6,
@@ -1544,19 +1529,19 @@ const styles = StyleSheet.create({
   resumoRecebimentoLabel: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#6B786B",
+    color: colors.textoSuave,
     marginBottom: 4,
     textTransform: "uppercase",
   },
   resumoRecebimentoValor: {
     fontSize: 15,
     fontWeight: "900",
-    color: "#263826",
+    color: colors.texto,
   },
   botaoWhatsApp: {
-    backgroundColor: "#E8F6F1",
+    backgroundColor: colors.informacaoFundo,
     borderWidth: 1,
-    borderColor: "#A7D8C9",
+    borderColor: colors.bordaForte,
     borderRadius: 16,
     paddingVertical: 13,
     paddingHorizontal: 14,
@@ -1564,7 +1549,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   botaoWhatsAppTexto: {
-    color: "#1D6B57",
+    color: colors.informacao,
     fontSize: 14,
     fontWeight: "900",
     textAlign: "center",
@@ -1575,23 +1560,23 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   botaoPrincipalGrande: {
-    backgroundColor: "#2F6B3F",
+    backgroundColor: colors.principal,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
   botaoSecundarioGrande: {
-    backgroundColor: "#EEF6EC",
+    backgroundColor: colors.principalClaro,
     borderWidth: 1,
-    borderColor: "#BDD7B8",
+    borderColor: colors.bordaForte,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
   botaoPerigoGrande: {
-    backgroundColor: "#FDECEC",
+    backgroundColor: colors.perigoFundo,
     borderWidth: 1,
-    borderColor: "#F0B8B8",
+    borderColor: colors.perigo,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,

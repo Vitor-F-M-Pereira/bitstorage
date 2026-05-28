@@ -12,7 +12,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, View } from "react-native";
 
 import { auth, db } from "../../services/firebaseConfig";
-import { colors } from "../../styles/estoqueStyles";
+import { colors } from "../../styles/globalStyles";
 
 export default function DrawerLayout() {
   const [tipoUsuario, setTipoUsuario] = useState("");
@@ -393,16 +393,6 @@ export default function DrawerLayout() {
           ),
         }}
       />
-
-      <Drawer.Screen
-        name="explore"
-        options={{
-          href: null,
-          drawerItemStyle: {
-            display: "none",
-          },
-        }}
-      />
-    </Drawer>
+</Drawer>
   );
 }

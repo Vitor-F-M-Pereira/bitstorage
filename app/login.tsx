@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 import { auth, db } from "../services/firebaseConfig";
-import { colors, styles } from "../styles/estoqueStyles";
+import { colors, styles } from "../styles/globalStyles";
 
 export default function Login() {
   const [email, setEmail] = useState("");

@@ -21,8 +21,9 @@ import {
   View,
 } from "react-native";
 
+import CampoSelecao from "../../components/CampoSelecao";
 import { auth, db, secondaryAuth } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 type Usuario = {
   id: string;
@@ -916,43 +917,19 @@ export default function Usuarios() {
         titulo="Filtrar usuários"
         descricao="Escolha quais contas deseja visualizar na lista."
       >
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            texto="Ativos"
-            selecionado={filtroStatus === "ativos"}
-            disabled={carregando}
-            aoPressionar={() => setFiltroStatus("ativos")}
-          />
-
-          <BotaoOpcao
-            texto="Inativos"
-            selecionado={filtroStatus === "inativos"}
-            disabled={carregando}
-            aoPressionar={() => setFiltroStatus("inativos")}
-          />
-
-          <BotaoOpcao
-            texto="Administradores"
-            selecionado={filtroStatus === "administradores"}
-            disabled={carregando}
-            aoPressionar={() => setFiltroStatus("administradores")}
-          />
-
-          <BotaoOpcao
-            texto="Cozinheiros"
-            selecionado={filtroStatus === "cozinheiros"}
-            disabled={carregando}
-            aoPressionar={() => setFiltroStatus("cozinheiros")}
-          />
-
-
-          <BotaoOpcao
-            texto="Todos"
-            selecionado={filtroStatus === "todos"}
-            disabled={carregando}
-            aoPressionar={() => setFiltroStatus("todos")}
-          />
-        </View>
+        <CampoSelecao
+          label="Status dos usuários"
+          value={filtroStatus}
+          onChange={setFiltroStatus}
+          disabled={carregando}
+          options={[
+            { label: "Ativos", value: "ativos" },
+            { label: "Inativos", value: "inativos" },
+            { label: "Administradores", value: "administradores" },
+            { label: "Cozinheiros", value: "cozinheiros" },
+            { label: "Todos", value: "todos" },
+          ]}
+        />
       </Bloco>
 
       <Text accessibilityRole="header" style={styles.subtitulo}>

@@ -10,6 +10,8 @@ import {
     View,
 } from "react-native";
 
+import { colors, shadows } from "../styles/globalStyles";
+
 type LeitorValidadeProps = {
   onValidadeEncontrada: (validade: string) => void;
   onFechar: () => void;
@@ -201,7 +203,7 @@ export default function LeitorValidade({
         onPress={tirarFotoELerValidade}
       >
         {carregando ? (
-          <ActivityIndicator color="#FFFFFF" />
+          <ActivityIndicator color={colors.textoClaro} />
         ) : (
           <Text style={styles.textoBotao}>Tirar foto da validade</Text>
         )}
@@ -225,33 +227,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
-    backgroundColor: "#F8FAF7",
+    backgroundColor: colors.fundo,
     justifyContent: "center",
   },
   titulo: {
     fontSize: 24,
     fontWeight: "800",
-    color: "#26382B",
+    color: colors.texto,
     textAlign: "center",
     marginBottom: 12,
   },
   descricao: {
     fontSize: 16,
-    color: "#4F5F52",
+    color: colors.textoSuave,
     textAlign: "center",
     lineHeight: 22,
     marginBottom: 24,
   },
   botaoPrincipal: {
-    backgroundColor: "#527853",
+    backgroundColor: colors.principal,
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 16,
     alignItems: "center",
     marginBottom: 16,
+    ...shadows.soft,
   },
   textoBotao: {
-    color: "#FFFFFF",
+    color: colors.textoClaro,
     fontSize: 16,
     fontWeight: "700",
   },
@@ -260,27 +263,28 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   textoVoltar: {
-    color: "#527853",
+    color: colors.principalEscuro,
     fontSize: 16,
     fontWeight: "700",
   },
   caixaTexto: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 14,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: "#D9E4D4",
+    borderColor: colors.borda,
+    ...shadows.soft,
   },
   subtitulo: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#26382B",
+    color: colors.texto,
     marginBottom: 6,
   },
   textoLido: {
     fontSize: 14,
-    color: "#4F5F52",
+    color: colors.textoSuave,
     lineHeight: 20,
   },
 });

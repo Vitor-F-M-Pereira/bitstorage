@@ -2,14 +2,14 @@ import { collection, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Text,
   View,
 } from "react-native";
 
+import CampoSelecao from "../../components/CampoSelecao";
 import { db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 type Alimento = {
   id: string;
@@ -456,45 +456,6 @@ export default function Alertas() {
     );
   };
 
-  const BotaoFiltro = ({
-    texto,
-    valor,
-  }: {
-    texto: string;
-    valor: string;
-  }) => {
-    const selecionado = filtroSelecionado === valor;
-
-    return (
-      <Pressable
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
-        accessibilityHint="Toque duas vezes para filtrar os alertas."
-        onPress={() => setFiltroSelecionado(valor)}
-        style={({ pressed }) => [
-          styles.opcao,
-          {
-            minHeight: 46,
-            justifyContent: "center",
-            opacity: pressed ? 0.65 : 1,
-          },
-          selecionado && styles.opcaoSelecionada,
-        ]}
-      >
-        <Text
-          style={[
-            styles.textoOpcao,
-            { fontSize: 15 },
-            selecionado && styles.textoOpcaoSelecionada,
-          ]}
-        >
-          {texto}
-        </Text>
-      </Pressable>
-    );
-  };
-
   const CardAlerta = ({ item }: { item: ItemComAlerta }) => {
     const tipo = definirTipoAlerta(item);
     const cores = definirCores(tipo);
@@ -656,13 +617,18 @@ export default function Alertas() {
         titulo="Filtrar alertas"
         descricao="Escolha qual tipo de alerta deseja visualizar."
       >
-        <View style={styles.opcoes}>
-          <BotaoFiltro texto="Todos" valor="todos" />
-          <BotaoFiltro texto="Vencidos" valor="vencidos" />
-          <BotaoFiltro texto="Vencem logo" valor="vencendo" />
-          <BotaoFiltro texto="Estoque baixo" valor="baixo" />
-          <BotaoFiltro texto="Zerados" valor="zerados" />
-        </View>
+        <CampoSelecao
+          label="Tipo de alerta"
+          value={filtroSelecionado}
+          onChange={setFiltroSelecionado}
+          options={[
+            { label: "Todos", value: "todos" },
+            { label: "Vencidos", value: "vencidos" },
+            { label: "Vencem logo", value: "vencendo" },
+            { label: "Estoque baixo", value: "baixo" },
+            { label: "Zerados", value: "zerados" },
+          ]}
+        />
       </Bloco>
 
       <Text accessibilityRole="header" style={styles.subtitulo}>

@@ -9,6 +9,8 @@ import {
     View,
 } from "react-native";
 
+import { colors, shadows } from "../styles/globalStyles";
+
 type ProdutoEscaneado = {
   codigo?: string;
   nome?: string;
@@ -200,39 +202,40 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAF7",
+    backgroundColor: colors.fundo,
   },
   titulo: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#26382B",
+    color: colors.texto,
     marginBottom: 12,
     textAlign: "center",
   },
   texto: {
     fontSize: 16,
-    color: "#4F5F52",
+    color: colors.textoSuave,
     textAlign: "center",
     marginBottom: 20,
     lineHeight: 22,
   },
   botaoPrincipal: {
-    backgroundColor: "#527853",
+    backgroundColor: colors.principal,
     paddingVertical: 14,
     paddingHorizontal: 22,
-    borderRadius: 14,
+    borderRadius: 16,
     marginTop: 8,
+    ...shadows.soft,
   },
   botaoSecundario: {
     marginTop: 14,
   },
   textoBotao: {
-    color: "#FFFFFF",
+    color: colors.textoClaro,
     fontSize: 16,
     fontWeight: "700",
   },
   textoBotaoSecundario: {
-    color: "#527853",
+    color: colors.principalEscuro,
     fontSize: 16,
     fontWeight: "700",
   },
@@ -250,13 +253,13 @@ const styles = StyleSheet.create({
   tituloScanner: {
     fontSize: 24,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: colors.textoClaro,
     marginBottom: 8,
     textAlign: "center",
   },
   textoScanner: {
     fontSize: 16,
-    color: "#FFFFFF",
+    color: colors.textoClaro,
     textAlign: "center",
     marginBottom: 28,
     lineHeight: 22,
@@ -265,13 +268,13 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderWidth: 4,
-    borderColor: "#FFFFFF",
+    borderColor: colors.textoClaro,
     borderRadius: 24,
     backgroundColor: "rgba(255,255,255,0.08)",
   },
   carregandoBox: {
     marginTop: 24,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.card,
     paddingVertical: 12,
     paddingHorizontal: 18,
     borderRadius: 14,
@@ -281,13 +284,13 @@ const styles = StyleSheet.create({
   },
   carregandoTexto: {
     fontSize: 15,
-    color: "#26382B",
+    color: colors.texto,
     fontWeight: "600",
   },
   botaoFechar: {
     position: "absolute",
     bottom: 36,
-    backgroundColor: "#527853",
+    backgroundColor: colors.principal,
     paddingVertical: 14,
     paddingHorizontal: 22,
     borderRadius: 14,

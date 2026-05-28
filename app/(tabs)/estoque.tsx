@@ -11,11 +11,11 @@ import {
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -23,8 +23,9 @@ import {
   View,
 } from "react-native";
 
+import CampoSelecao from "../../components/CampoSelecao";
 import { auth, db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 const gruposCategoria = ["Todos", "Alimentos", "Limpeza", "Higiene", "Outros"];
 
@@ -77,6 +78,7 @@ export default function Estoque() {
   const [carregandoAcao, setCarregandoAcao] = useState(false);
   const [idProcessando, setIdProcessando] = useState<string | null>(null);
   const [carregandoLista, setCarregandoLista] = useState(true);
+  const [itensExpandidos, setItensExpandidos] = useState<Record<string, boolean>>({});
 
   const ehAdministrador = tipoUsuario === "administrador";
   const ehCozinheiro = tipoUsuario === "cozinheiro";
@@ -651,7 +653,11 @@ export default function Estoque() {
       passaOrigem &&
       passaStatus
     );
-  });
+  }).sort((a, b) =>
+    String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR", {
+      sensitivity: "base",
+    })
+  );
 
   const totalVencidos = alimentosComStatus.filter(
     (item) => item.status === "Vencido"
@@ -880,35 +886,138 @@ export default function Estoque() {
     );
   };
 
+  const alternarItemExpandido = (id: string) => {
+    setItensExpandidos((estadoAtual) => ({
+      ...estadoAtual,
+      [id]: !estadoAtual[id],
+    }));
+  };
+
   const renderItem = ({ item }: { item: any }) => {
     const processandoEsteItem = carregandoAcao && idProcessando === item.id;
+    const expandido = !!itensExpandidos[item.id];
+
+    const corSituacao =
+      item.status === "Vencido"
+        ? colors.perigo
+        : item.status === "Usar em breve" || item.estoqueBaixo || item.zerado
+        ? colors.alerta
+        : colors.sucesso;
+
+    const textoSituacao = item.zerado
+      ? "Zerado"
+      : item.status === "Vencido"
+      ? "Vencido"
+      : item.status === "Usar em breve"
+      ? "Vence logo"
+      : item.estoqueBaixo
+      ? "Estoque baixo"
+      : "Dentro do prazo";
 
     return (
       <View
-        accessible
-        accessibilityRole="text"
-        accessibilityLabel={`Item ${item.nome}. Categoria ${item.categoria}. Quantidade ${item.quantidadeAtual} ${item.tipoQuantidade}. Situação ${item.status}.`}
         style={[
           styles.card,
           item.status === "Vencido" && styles.cardVencido,
           item.status === "Usar em breve" && styles.cardProximo,
           item.status === "Dentro do prazo" && styles.cardNormal,
           {
-            marginBottom: 14,
+            marginBottom: 10,
+            padding: 0,
+            overflow: "hidden",
           },
         ]}
       >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            gap: 10,
-            alignItems: "flex-start",
-          }}
+        <Pressable
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={`Item ${item.nome}. Quantidade ${item.quantidadeAtual} ${item.tipoQuantidade}. Situação ${textoSituacao}. ${expandido ? "Recolher detalhes" : "Expandir detalhes"}.`}
+          accessibilityHint="Toque duas vezes para abrir ou fechar os detalhes deste item."
+          onPress={() => alternarItemExpandido(item.id)}
+          style={({ pressed }) => ({
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+            opacity: pressed ? 0.7 : 1,
+          })}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.nome}>{item.nome}</Text>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 17,
+                  fontWeight: "900",
+                  color: colors.texto,
+                  marginBottom: 4,
+                }}
+              >
+                {item.nome}
+              </Text>
 
+              <Text
+                style={{
+                  color: colors.textoSuave,
+                  fontSize: 13,
+                  lineHeight: 18,
+                }}
+              >
+                {item.categoria} • Validade: {item.validade || "Não informada"}
+              </Text>
+            </View>
+
+            <View style={{ alignItems: "flex-end", minWidth: 92 }}>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: "900",
+                  color: colors.texto,
+                  textAlign: "right",
+                }}
+              >
+                {item.quantidadeAtual} {item.tipoQuantidade || "un."}
+              </Text>
+
+              <Text
+                style={{
+                  marginTop: 4,
+                  color: corSituacao,
+                  fontWeight: "900",
+                  fontSize: 12,
+                  textAlign: "right",
+                }}
+              >
+                {textoSituacao}
+              </Text>
+            </View>
+          </View>
+
+          <Text
+            style={{
+              marginTop: 8,
+              color: colors.secundario,
+              fontWeight: "900",
+              fontSize: 13,
+            }}
+          >
+            {expandido ? "Ocultar detalhes" : "Ver detalhes"}
+          </Text>
+        </Pressable>
+
+        {expandido && (
+          <View
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: colors.borda,
+              padding: 16,
+              paddingTop: 14,
+            }}
+          >
             <Text style={{ color: colors.textoSuave, lineHeight: 21 }}>
               {item.categoriaGeral} • {item.categoria}
             </Text>
@@ -920,8 +1029,7 @@ export default function Estoque() {
                 fontWeight: "800",
               }}
             >
-              Quantidade: {item.quantidadeAtual}{" "}
-              {item.tipoQuantidade || "unidades"}
+              Quantidade: {item.quantidadeAtual} {item.tipoQuantidade || "unidades"}
             </Text>
 
             <Text style={{ color: colors.textoSuave, marginTop: 4 }}>
@@ -957,128 +1065,128 @@ export default function Estoque() {
                 Estoque baixo.
               </Text>
             )}
-          </View>
-        </View>
 
-        {item.origem === "Doação" && (
-          <Text style={{ color: colors.textoSuave, marginTop: 8 }}>
-            Doador: {item.nomeDoador || item.detalheOrigem || "Não informado"}
-          </Text>
-        )}
-
-        {item.origem === "Compra" && (
-          <Text style={{ color: colors.textoSuave, marginTop: 8 }}>
-            Valor da compra: {formatarMoeda(item.precoCompra)}
-          </Text>
-        )}
-
-        {processandoEsteItem && (
-          <View style={{ marginTop: 10 }}>
-            <ActivityIndicator size="small" color={colors.principal} />
-
-            <Text style={{ textAlign: "center", marginTop: 5 }}>
-              Salvando alteração...
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.areaBotoes}>
-          {podeEditar && (
-            <Pressable
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={`Editar ${item.nome}`}
-              accessibilityHint="Abre a janela de edição do item."
-              disabled={carregandoAcao}
-              style={({ pressed }) => [
-                styles.botaoEditar,
-                {
-                  minHeight: 48,
-                  justifyContent: "center",
-                  opacity: carregandoAcao || pressed ? 0.65 : 1,
-                },
-              ]}
-              onPress={() => editarAlimento(item)}
-            >
-              <Text style={styles.textoBotaoCard}>Editar</Text>
-            </Pressable>
-          )}
-
-          {podeExcluir && (
-            <Pressable
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={`Excluir ${item.nome}`}
-              accessibilityHint="Exclui o item do estoque após confirmação."
-              disabled={carregandoAcao}
-              style={({ pressed }) => [
-                styles.botaoExcluir,
-                {
-                  minHeight: 48,
-                  justifyContent: "center",
-                  opacity: carregandoAcao || pressed ? 0.65 : 1,
-                },
-              ]}
-              onPress={() => confirmarExclusao(item)}
-            >
-              <Text style={styles.textoBotaoCard}>
-                {processandoEsteItem ? "Excluindo..." : "Excluir"}
+            {item.origem === "Doação" && (
+              <Text style={{ color: colors.textoSuave, marginTop: 8 }}>
+                Doador: {item.nomeDoador || item.detalheOrigem || "Não informado"}
               </Text>
-            </Pressable>
-          )}
-        </View>
+            )}
 
-        {podeMovimentar && (
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 10,
-              marginTop: 10,
-            }}
-          >
-            <Pressable
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={`Registrar entrada para ${item.nome}`}
-              accessibilityHint="Adiciona quantidade ao estoque deste item."
-              disabled={carregandoAcao}
-              style={({ pressed }) => ({
-                flex: 1,
-                backgroundColor: colors.sucesso,
-                padding: 14,
-                borderRadius: 12,
-                alignItems: "center",
-                minHeight: 48,
-                justifyContent: "center",
-                opacity: carregandoAcao || pressed ? 0.65 : 1,
-              })}
-              onPress={() => abrirModalMovimentacao(item, "entrada")}
-            >
-              <Text style={{ color: "white", fontWeight: "900" }}>
-                Entrada
+            {item.origem === "Compra" && (
+              <Text style={{ color: colors.textoSuave, marginTop: 8 }}>
+                Valor da compra: {formatarMoeda(item.precoCompra)}
               </Text>
-            </Pressable>
+            )}
 
-            <Pressable
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={`Registrar saída para ${item.nome}`}
-              accessibilityHint="Registra consumo ou retirada do estoque deste item."
-              disabled={carregandoAcao}
-              style={({ pressed }) => ({
-                flex: 1,
-                backgroundColor: colors.alerta,
-                padding: 14,
-                borderRadius: 12,
-                alignItems: "center",
-                minHeight: 48,
-                justifyContent: "center",
-                opacity: carregandoAcao || pressed ? 0.65 : 1,
-              })}
-              onPress={() => abrirModalMovimentacao(item, "saida")}
-            >
-              <Text style={{ color: "white", fontWeight: "900" }}>Saída</Text>
-            </Pressable>
+            {processandoEsteItem && (
+              <View style={{ marginTop: 10 }}>
+                <ActivityIndicator size="small" color={colors.principal} />
+
+                <Text style={{ textAlign: "center", marginTop: 5 }}>
+                  Salvando alteração...
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.areaBotoes}>
+              {podeEditar && (
+                <Pressable
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${item.nome}`}
+                  accessibilityHint="Abre a janela de edição do item."
+                  disabled={carregandoAcao}
+                  style={({ pressed }) => [
+                    styles.botaoEditar,
+                    {
+                      minHeight: 48,
+                      justifyContent: "center",
+                      opacity: carregandoAcao || pressed ? 0.65 : 1,
+                    },
+                  ]}
+                  onPress={() => editarAlimento(item)}
+                >
+                  <Text style={styles.textoBotaoCard}>Editar</Text>
+                </Pressable>
+              )}
+
+              {podeExcluir && (
+                <Pressable
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={`Excluir ${item.nome}`}
+                  accessibilityHint="Exclui o item do estoque após confirmação."
+                  disabled={carregandoAcao}
+                  style={({ pressed }) => [
+                    styles.botaoExcluir,
+                    {
+                      minHeight: 48,
+                      justifyContent: "center",
+                      opacity: carregandoAcao || pressed ? 0.65 : 1,
+                    },
+                  ]}
+                  onPress={() => confirmarExclusao(item)}
+                >
+                  <Text style={styles.textoBotaoCard}>
+                    {processandoEsteItem ? "Excluindo..." : "Excluir"}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            {podeMovimentar && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 10,
+                  marginTop: 10,
+                }}
+              >
+                <Pressable
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={`Registrar entrada para ${item.nome}`}
+                  accessibilityHint="Adiciona quantidade ao estoque deste item."
+                  disabled={carregandoAcao}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    backgroundColor: colors.sucesso,
+                    padding: 14,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    minHeight: 48,
+                    justifyContent: "center",
+                    opacity: carregandoAcao || pressed ? 0.65 : 1,
+                  })}
+                  onPress={() => abrirModalMovimentacao(item, "entrada")}
+                >
+                  <Text style={{ color: "white", fontWeight: "900" }}>
+                    Entrada
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={`Registrar saída para ${item.nome}`}
+                  accessibilityHint="Registra consumo ou retirada do estoque deste item."
+                  disabled={carregandoAcao}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    backgroundColor: colors.alerta,
+                    padding: 14,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    minHeight: 48,
+                    justifyContent: "center",
+                    opacity: carregandoAcao || pressed ? 0.65 : 1,
+                  })}
+                  onPress={() => abrirModalMovimentacao(item, "saida")}
+                >
+                  <Text style={{ color: "white", fontWeight: "900" }}>Saída</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -1169,100 +1277,52 @@ export default function Estoque() {
           onChangeText={setBusca}
         />
 
-        <Text style={styles.label}>Tipo do produto</Text>
-
-        <View style={styles.opcoes}>
-          {gruposCategoria.map((item) => (
-            <BotaoOpcao
-              key={item}
-              texto={item}
-              selecionado={filtroGrupo === item}
-              aoPressionar={() => {
-                setFiltroGrupo(item);
-                setFiltroCategoria("Todas");
-              }}
-            />
-          ))}
-        </View>
+        <CampoSelecao
+          label="Tipo do produto"
+          value={filtroGrupo}
+          onChange={(valor) => {
+            setFiltroGrupo(valor);
+            setFiltroCategoria("Todas");
+          }}
+          options={gruposCategoria.map((item) => ({ label: item, value: item }))}
+        />
 
         {filtroGrupo !== "Todos" && (
-          <>
-            <Text style={styles.label}>Categoria específica</Text>
-
-            <View style={styles.opcoes}>
-              {categoriasDisponiveis.map((item) => (
-                <BotaoOpcao
-                  key={item}
-                  texto={item}
-                  selecionado={filtroCategoria === item}
-                  aoPressionar={() => setFiltroCategoria(item)}
-                />
-              ))}
-            </View>
-          </>
+          <CampoSelecao
+            label="Categoria específica"
+            value={filtroCategoria}
+            onChange={setFiltroCategoria}
+            options={categoriasDisponiveis.map((item) => ({
+              label: item,
+              value: item,
+            }))}
+          />
         )}
 
-        <Text style={styles.label}>Origem</Text>
+        <CampoSelecao
+          label="Origem"
+          value={filtroOrigem}
+          onChange={setFiltroOrigem}
+          options={[
+            { label: "Todas", value: "Todas" },
+            { label: "Doação", value: "Doação" },
+            { label: "Compra", value: "Compra" },
+          ]}
+        />
 
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            texto="Todas"
-            selecionado={filtroOrigem === "Todas"}
-            aoPressionar={() => setFiltroOrigem("Todas")}
-          />
-
-          <BotaoOpcao
-            texto="Doação"
-            selecionado={filtroOrigem === "Doação"}
-            aoPressionar={() => setFiltroOrigem("Doação")}
-          />
-
-          <BotaoOpcao
-            texto="Compra"
-            selecionado={filtroOrigem === "Compra"}
-            aoPressionar={() => setFiltroOrigem("Compra")}
-          />
-        </View>
-
-        <Text style={styles.label}>Situação</Text>
-
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            texto="Todos"
-            selecionado={filtroStatus === "todos"}
-            aoPressionar={() => setFiltroStatus("todos")}
-          />
-
-          <BotaoOpcao
-            texto="Vencem logo"
-            selecionado={filtroStatus === "proximos"}
-            aoPressionar={() => setFiltroStatus("proximos")}
-          />
-
-          <BotaoOpcao
-            texto="Vencidos"
-            selecionado={filtroStatus === "vencidos"}
-            aoPressionar={() => setFiltroStatus("vencidos")}
-          />
-
-          <BotaoOpcao
-            texto="Dentro do prazo"
-            selecionado={filtroStatus === "validos"}
-            aoPressionar={() => setFiltroStatus("validos")}
-          />
-
-          <BotaoOpcao
-            texto="Baixo estoque"
-            selecionado={filtroStatus === "baixo"}
-            aoPressionar={() => setFiltroStatus("baixo")}
-          />
-
-          <BotaoOpcao
-            texto="Zerados"
-            selecionado={filtroStatus === "zerados"}
-            aoPressionar={() => setFiltroStatus("zerados")}
-          />
-        </View>
+        <CampoSelecao
+          label="Situação"
+          value={filtroStatus}
+          onChange={setFiltroStatus}
+          options={[
+            { label: "Todos", value: "todos" },
+            { label: "Vencem logo", value: "proximos" },
+            { label: "Vencidos", value: "vencidos" },
+            { label: "Dentro do prazo", value: "validos" },
+            { label: "Baixo estoque", value: "baixo" },
+            { label: "Zerados", value: "zerados" },
+          ]}
+        />
       </Bloco>
 
       <Text accessibilityRole="header" style={styles.subtitulo}>

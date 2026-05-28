@@ -23,7 +23,7 @@ import {
 } from "react-native";
 
 import { db } from "../services/firebaseConfig";
-import { colors, styles } from "../styles/estoqueStyles";
+import { colors, styles } from "../styles/globalStyles";
 
 const tiposQuantidade = ["unidades", "kg", "litros"];
 
@@ -503,7 +503,7 @@ export default function QueroDoarScreen() {
   const renderItemNecessario = ({ item }: { item: ItemNecessario }) => (
     <View
       style={{
-        backgroundColor: "#FFFFFF",
+        backgroundColor: colors.card,
         borderRadius: 16,
         padding: 12,
         borderWidth: 1,
@@ -544,7 +544,7 @@ export default function QueroDoarScreen() {
         <View
           style={{
             backgroundColor:
-              item.motivo === "Em falta" ? "#FDECEC" : "#FFF7D6",
+              item.motivo === "Em falta" ? colors.perigoFundo : colors.alertaFundo,
             borderRadius: 999,
             paddingHorizontal: 10,
             paddingVertical: 6,
@@ -555,7 +555,7 @@ export default function QueroDoarScreen() {
             style={{
               fontSize: 12,
               fontWeight: "800",
-              color: item.motivo === "Em falta" ? "#9A2D2D" : "#755A00",
+              color: item.motivo === "Em falta" ? colors.perigo : colors.alerta,
             }}
           >
             {item.motivo}
@@ -579,7 +579,7 @@ export default function QueroDoarScreen() {
           },
         ]}
       >
-        <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 14 }}>
+        <Text style={{ color: colors.textoClaro, fontWeight: "800", fontSize: 14 }}>
           Quero doar este item
         </Text>
       </Pressable>
@@ -615,9 +615,9 @@ export default function QueroDoarScreen() {
             {
               minHeight: 54,
               borderRadius: 16,
-              backgroundColor: "#EEF6EC",
+              backgroundColor: colors.principalClaro,
               borderWidth: 1,
-              borderColor: "#BDD7B8",
+              borderColor: colors.bordaForte,
               alignItems: "center",
               justifyContent: "center",
               marginBottom: 16,
@@ -900,7 +900,7 @@ export default function QueroDoarScreen() {
                   borderRadius: 19,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: colors.card,
                   borderWidth: 1,
                   borderColor: colors.borda,
                 }}
@@ -923,7 +923,7 @@ export default function QueroDoarScreen() {
                 styles.input,
                 {
                   marginBottom: 12,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: colors.card,
                 },
               ]}
               placeholder="Buscar item..."

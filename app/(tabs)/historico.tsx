@@ -10,17 +10,18 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
+import CampoSelecao from "../../components/CampoSelecao";
 import { auth, db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 type RegistroHistorico = {
   id: string;
@@ -67,11 +68,11 @@ export default function Historico() {
   const [doacoes, setDoacoes] = useState<RegistroHistorico[]>([]);
 
   const [mesSelecionado, setMesSelecionado] = useState(
-    String(dataAtual.getMonth() + 1).padStart(2, "0")
+    String(dataAtual.getMonth() + 1).padStart(2, "0"),
   );
 
   const [anoSelecionado, setAnoSelecionado] = useState(
-    String(dataAtual.getFullYear())
+    String(dataAtual.getFullYear()),
   );
 
   const [filtroTipo, setFiltroTipo] = useState("todos");
@@ -108,7 +109,7 @@ export default function Historico() {
   useEffect(() => {
     const consulta = query(
       collection(db, "movimentacoes"),
-      orderBy("data", "desc")
+      orderBy("data", "desc"),
     );
 
     const unsubscribe = onSnapshot(
@@ -144,7 +145,7 @@ export default function Historico() {
       (error) => {
         console.log(error);
         setCarregandoCompras(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -185,7 +186,7 @@ export default function Historico() {
       (error) => {
         console.log(error);
         setCarregandoDoacoes(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -253,6 +254,14 @@ export default function Historico() {
     });
   };
 
+  const escaparHtml = (valor: any) =>
+    String(valor ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
   const registrosDoMes = useMemo(() => {
     const todos = [...compras, ...doacoes];
 
@@ -279,16 +288,37 @@ export default function Historico() {
       });
   }, [compras, doacoes, mesSelecionado, anoSelecionado, filtroTipo]);
 
+  const anosDisponiveis = useMemo(() => {
+    const anoAtual = dataAtual.getFullYear();
+    const anos = new Set<string>();
+
+    for (let ano = anoAtual + 1; ano >= anoAtual - 5; ano -= 1) {
+      anos.add(String(ano));
+    }
+
+    [...compras, ...doacoes].forEach((item) => {
+      const { ano } = obterMesAno(item);
+
+      if (ano) {
+        anos.add(String(ano));
+      }
+    });
+
+    return Array.from(anos)
+      .sort((a, b) => Number(b) - Number(a))
+      .map((ano) => ({ label: ano, value: ano }));
+  }, [compras, doacoes]);
+
   const totalCompras = registrosDoMes.filter(
-    (item) => item.tipoRegistro === "Compra"
+    (item) => item.tipoRegistro === "Compra",
   ).length;
 
   const totalDoacoes = registrosDoMes.filter(
-    (item) => item.tipoRegistro === "Doação"
+    (item) => item.tipoRegistro === "Doação",
   ).length;
 
   const totalSimulados = registrosDoMes.filter(
-    (item) => item.dadoSimulado === true
+    (item) => item.dadoSimulado === true,
   ).length;
 
   const valorTotalCompras = registrosDoMes.reduce((total, item) => {
@@ -328,46 +358,204 @@ export default function Historico() {
     .sort((a: any, b: any) => b.quantidade - a.quantidade)
     .slice(0, 3);
 
+  const gerarPdfHistorico = async () => {
+    try {
+      if (registrosDoMes.length === 0) {
+        Alert.alert(
+          "Sem registros",
+          "Não há movimentações no período selecionado para gerar o PDF.",
+        );
+        return;
+      }
+
+      const Print = await import("expo-print");
+      const Sharing = await import("expo-sharing");
+
+      const nomeMes =
+        meses.find((mes) => mes.valor === mesSelecionado)?.nome ||
+        mesSelecionado;
+
+      const linhasTabela = registrosDoMes
+        .map((item) => {
+          const ehCompra = item.tipoRegistro === "Compra";
+          const detalhe = ehCompra
+            ? `Valor: ${formatarMoeda(item.valorCompra)}`
+            : `Doador: ${item.nomeDoador || "Não informado"}`;
+
+          return `
+            <tr>
+              <td>${escaparHtml(formatarData(item.data))}</td>
+              <td>${escaparHtml(item.tipoRegistro)}</td>
+              <td>${escaparHtml(item.produto)}</td>
+              <td>${escaparHtml(
+                item.categoriaGeral || item.categoria || "Não informada",
+              )}</td>
+              <td>${escaparHtml(
+                `${item.quantidade} ${item.tipoQuantidade || "unidades"}`,
+              )}</td>
+              <td>${escaparHtml(detalhe)}</td>
+            </tr>
+          `;
+        })
+        .join("");
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+          <head>
+            <meta charset="UTF-8" />
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                color: #20312A;
+                padding: 28px;
+                background: #FFFFFF;
+              }
+
+              h1 {
+                color: #28543B;
+                margin-bottom: 4px;
+                font-size: 26px;
+              }
+
+              .subtitulo {
+                color: #61776D;
+                margin-bottom: 24px;
+                font-size: 14px;
+              }
+
+              .resumo {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                margin-bottom: 22px;
+              }
+
+              .card {
+                border: 1px solid #D8E7DD;
+                border-radius: 12px;
+                padding: 12px;
+                background: #F6FAF7;
+              }
+
+              .card strong {
+                display: block;
+                font-size: 18px;
+                color: #28543B;
+                margin-bottom: 4px;
+              }
+
+              .card span {
+                color: #61776D;
+                font-size: 13px;
+              }
+
+              table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 12px;
+                font-size: 12px;
+              }
+
+              th {
+                background: #E6F2EA;
+                color: #20312A;
+                text-align: left;
+                padding: 9px;
+                border: 1px solid #B9D1C2;
+              }
+
+              td {
+                padding: 8px;
+                border: 1px solid #D8E7DD;
+                vertical-align: top;
+              }
+
+              tr:nth-child(even) {
+                background: #FAFDFB;
+              }
+
+              .rodape {
+                margin-top: 24px;
+                font-size: 11px;
+                color: #61776D;
+              }
+            </style>
+          </head>
+          <body>
+            <h1>Relatório de Movimentações - BitStorage</h1>
+            <p class="subtitulo">Período: ${escaparHtml(nomeMes)} de ${escaparHtml(
+              anoSelecionado,
+            )} • Gerado em ${escaparHtml(new Date().toLocaleDateString("pt-BR"))}</p>
+
+            <section class="resumo">
+              <div class="card">
+                <strong>${registrosDoMes.length}</strong>
+                <span>Registros encontrados</span>
+              </div>
+              <div class="card">
+                <strong>${totalCompras}</strong>
+                <span>Compras • Total gasto: ${escaparHtml(
+                  formatarMoeda(valorTotalCompras),
+                )}</span>
+              </div>
+              <div class="card">
+                <strong>${totalDoacoes}</strong>
+                <span>Doações • Quantidade total: ${escaparHtml(
+                  quantidadeTotalDoada,
+                )}</span>
+              </div>
+              <div class="card">
+                <strong>${totalSimulados}</strong>
+                <span>Registros fictícios</span>
+              </div>
+            </section>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Produto</th>
+                  <th>Categoria</th>
+                  <th>Quantidade</th>
+                  <th>Detalhes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${linhasTabela}
+              </tbody>
+            </table>
+
+            <p class="rodape">Relatório gerado automaticamente pelo sistema BitStorage.</p>
+          </body>
+        </html>
+      `;
+
+      const arquivo = await Print.printToFileAsync({ html });
+
+      const podeCompartilhar = await Sharing.isAvailableAsync();
+
+      if (podeCompartilhar) {
+        await Sharing.shareAsync(arquivo.uri, {
+          mimeType: "application/pdf",
+          dialogTitle: "Compartilhar relatório do histórico",
+          UTI: "com.adobe.pdf",
+        });
+      } else {
+        Alert.alert("PDF gerado", `Arquivo salvo em: ${arquivo.uri}`);
+      }
+    } catch (error) {
+      console.log(error);
+      Alert.alert(
+        "Erro ao gerar PDF",
+        "Não foi possível gerar o relatório. Verifique se as dependências expo-print e expo-sharing estão instaladas.",
+      );
+    }
+  };
+
   const carregandoTela =
     carregandoUsuario || carregandoCompras || carregandoDoacoes;
-
-  const BotaoOpcao = ({
-    texto,
-    selecionado,
-    aoPressionar,
-  }: {
-    texto: string;
-    selecionado: boolean;
-    aoPressionar: () => void;
-  }) => (
-    <Pressable
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
-      accessibilityHint="Toque duas vezes para selecionar esta opção."
-      disabled={carregandoTela}
-      onPress={aoPressionar}
-      style={({ pressed }) => [
-        styles.opcao,
-        {
-          minHeight: 46,
-          justifyContent: "center",
-          opacity: carregandoTela || pressed ? 0.65 : 1,
-        },
-        selecionado && styles.opcaoSelecionada,
-      ]}
-    >
-      <Text
-        style={[
-          styles.textoOpcao,
-          { fontSize: 15 },
-          selecionado && styles.textoOpcaoSelecionada,
-        ]}
-      >
-        {texto}
-      </Text>
-    </Pressable>
-  );
 
   const LinhaResumo = ({
     titulo,
@@ -517,13 +705,13 @@ export default function Historico() {
           backgroundColor: item.dadoSimulado
             ? colors.alertaFundo
             : ehCompra
-            ? colors.secundarioClaro
-            : colors.sucessoFundo,
+              ? colors.secundarioClaro
+              : colors.sucessoFundo,
           borderColor: item.dadoSimulado
             ? colors.alerta
             : ehCompra
-            ? colors.secundario
-            : colors.sucesso,
+              ? colors.secundario
+              : colors.sucesso,
           borderWidth: 1,
           borderRadius: 18,
           padding: 15,
@@ -669,146 +857,142 @@ export default function Historico() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
-      style={styles.container}
-      contentContainerStyle={{
-        paddingBottom: 120,
-      }}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text accessibilityRole="header" style={styles.titulo}>
-        Histórico
-      </Text>
-
-      <Text style={styles.subtituloPrincipal}>
-        Relatório mensal de compras e doações registradas no sistema.
-      </Text>
-
-      <Bloco
-        titulo="Período do relatório"
-        descricao="Escolha o mês e o ano para visualizar somente as compras e doações daquele período."
+        style={styles.container}
+        contentContainerStyle={{
+          paddingBottom: 120,
+        }}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.label}>Ano</Text>
-
-        <TextInput
-          accessible
-          accessibilityLabel="Ano do relatório"
-          accessibilityHint="Digite o ano com quatro números."
-          style={styles.input}
-          placeholder="Ex: 2026"
-          value={anoSelecionado}
-          onChangeText={setAnoSelecionado}
-          keyboardType="numeric"
-          maxLength={4}
-        />
-
-        <Text style={styles.label}>Mês</Text>
-
-        <View style={styles.opcoes}>
-          {meses.map((item) => (
-            <BotaoOpcao
-              key={item.valor}
-              texto={item.nome}
-              selecionado={mesSelecionado === item.valor}
-              aoPressionar={() => setMesSelecionado(item.valor)}
-            />
-          ))}
-        </View>
-      </Bloco>
-
-      <Bloco
-        titulo="Filtrar registros"
-        descricao="Escolha se deseja ver todos os registros, somente compras, somente doações ou apenas dados fictícios."
-      >
-        <View style={styles.opcoes}>
-          <BotaoOpcao
-            texto="Todos"
-            selecionado={filtroTipo === "todos"}
-            aoPressionar={() => setFiltroTipo("todos")}
-          />
-
-          <BotaoOpcao
-            texto="Compras"
-            selecionado={filtroTipo === "compras"}
-            aoPressionar={() => setFiltroTipo("compras")}
-          />
-
-          <BotaoOpcao
-            texto="Doações"
-            selecionado={filtroTipo === "doacoes"}
-            aoPressionar={() => setFiltroTipo("doacoes")}
-          />
-
-          <BotaoOpcao
-            texto="Fictícios"
-            selecionado={filtroTipo === "simulados"}
-            aoPressionar={() => setFiltroTipo("simulados")}
-          />
-        </View>
-      </Bloco>
-
-      <Bloco
-        titulo="Resumo do mês"
-        descricao="Resumo apenas do mês e ano selecionados."
-      >
-        <LinhaResumo
-          titulo="Registros encontrados"
-          valor={registrosDoMes.length}
-          descricao="Compras e doações do período"
-          tipo="info"
-        />
-
-        <LinhaResumo
-          titulo="Compras"
-          valor={totalCompras}
-          descricao={`Total gasto: ${formatarMoeda(valorTotalCompras)}`}
-          tipo={totalCompras > 0 ? "alerta" : "info"}
-        />
-
-        <LinhaResumo
-          titulo="Doações"
-          valor={totalDoacoes}
-          descricao={`Quantidade total doada: ${quantidadeTotalDoada}`}
-          tipo={totalDoacoes > 0 ? "sucesso" : "info"}
-        />
-
-        <LinhaResumo
-          titulo="Dados fictícios"
-          valor={totalSimulados}
-          descricao="Registros simulados usados para teste da IA"
-          tipo={totalSimulados > 0 ? "alerta" : "info"}
-        />
-      </Bloco>
-
-      {rankingCategorias.length > 0 && (
-        <Bloco
-          titulo="Categorias mais registradas"
-          descricao="Categorias com maior quantidade movimentada no período."
-        >
-          {rankingCategorias.map((item: any) => (
-            <LinhaResumo
-              key={item.nome}
-              titulo={item.nome}
-              valor={item.quantidade}
-              descricao={`${item.registros} registro(s) no período`}
-              tipo="neutro"
-            />
-          ))}
-        </Bloco>
-      )}
-
-      <Text accessibilityRole="header" style={styles.subtitulo}>
-        Registros do período
-      </Text>
-
-      {registrosDoMes.length === 0 ? (
-        <Text style={styles.listaVazia}>
-          Nenhuma compra ou doação encontrada para o mês selecionado.
+        <Text accessibilityRole="header" style={styles.titulo}>
+          Histórico
         </Text>
-      ) : (
-        registrosDoMes.map((item) => <CardRegistro key={item.id} item={item} />)
-      )}
 
-      <View style={{ height: 24 }} />
+        <Text style={styles.subtituloPrincipal}>
+          Relatório mensal de compras e doações registradas no sistema.
+        </Text>
+
+        <Bloco
+          titulo="Período do relatório"
+          descricao="Escolha o mês e o ano para visualizar somente as compras e doações daquele período."
+        >
+          <CampoSelecao
+            label="Ano"
+            value={anoSelecionado}
+            onChange={setAnoSelecionado}
+            options={anosDisponiveis}
+          />
+
+          <CampoSelecao
+            label="Mês"
+            value={mesSelecionado}
+            onChange={setMesSelecionado}
+            options={meses.map((item) => ({
+              label: item.nome,
+              value: item.valor,
+            }))}
+          />
+        </Bloco>
+
+        <Bloco
+          titulo="Filtrar registros"
+          descricao="Escolha se deseja ver todos os registros, somente compras, somente doações ou apenas dados fictícios."
+        >
+          <CampoSelecao
+            label="Tipo de registro"
+            value={filtroTipo}
+            onChange={setFiltroTipo}
+            options={[
+              { label: "Todos", value: "todos" },
+              { label: "Compras", value: "compras" },
+              { label: "Doações", value: "doacoes" },
+              { label: "Fictícios", value: "simulados" },
+            ]}
+          />
+        </Bloco>
+
+        <Pressable
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Gerar PDF do histórico"
+          accessibilityHint="Gera e compartilha um relatório em PDF com as movimentações do período selecionado."
+          onPress={gerarPdfHistorico}
+          style={({ pressed }) => [
+            styles.botaoSalvar,
+            {
+              marginTop: 0,
+              marginBottom: 16,
+              opacity: pressed ? 0.82 : 1,
+            },
+          ]}
+        >
+          <Text style={styles.textoBotao}>Gerar PDF do relatório</Text>
+        </Pressable>
+
+        <Bloco
+          titulo="Resumo do mês"
+          descricao="Resumo apenas do mês e ano selecionados."
+        >
+          <LinhaResumo
+            titulo="Registros encontrados"
+            valor={registrosDoMes.length}
+            descricao="Compras e doações do período"
+            tipo="info"
+          />
+
+          <LinhaResumo
+            titulo="Compras"
+            valor={totalCompras}
+            descricao={`Total gasto: ${formatarMoeda(valorTotalCompras)}`}
+            tipo={totalCompras > 0 ? "alerta" : "info"}
+          />
+
+          <LinhaResumo
+            titulo="Doações"
+            valor={totalDoacoes}
+            descricao={`Quantidade total doada: ${quantidadeTotalDoada}`}
+            tipo={totalDoacoes > 0 ? "sucesso" : "info"}
+          />
+
+          <LinhaResumo
+            titulo="Dados fictícios"
+            valor={totalSimulados}
+            descricao="Registros simulados usados para teste da IA"
+            tipo={totalSimulados > 0 ? "alerta" : "info"}
+          />
+        </Bloco>
+
+        {rankingCategorias.length > 0 && (
+          <Bloco
+            titulo="Categorias mais registradas"
+            descricao="Categorias com maior quantidade movimentada no período."
+          >
+            {rankingCategorias.map((item: any) => (
+              <LinhaResumo
+                key={item.nome}
+                titulo={item.nome}
+                valor={item.quantidade}
+                descricao={`${item.registros} registro(s) no período`}
+                tipo="neutro"
+              />
+            ))}
+          </Bloco>
+        )}
+
+        <Text accessibilityRole="header" style={styles.subtitulo}>
+          Registros do período
+        </Text>
+
+        {registrosDoMes.length === 0 ? (
+          <Text style={styles.listaVazia}>
+            Nenhuma compra ou doação encontrada para o mês selecionado.
+          </Text>
+        ) : (
+          registrosDoMes.map((item) => (
+            <CardRegistro key={item.id} item={item} />
+          ))
+        )}
+
+        <View style={{ height: 24 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

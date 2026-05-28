@@ -21,10 +21,11 @@ import {
   View,
 } from "react-native";
 
+import CampoSelecao from "../../components/CampoSelecao";
 import LeitorValidade from "../../components/LeitorValidade";
 import ScannerProduto from "../../components/ScannerProduto";
 import { db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 const categoriasPorGrupo = {
   Alimentos: [
@@ -51,51 +52,35 @@ const tiposDoador = [
   "Grupo comunitário",
 ];
 
-type BotaoOpcaoProps = {
-  texto: string;
-  selecionado: boolean;
-  carregando: boolean;
-  aoPressionar: () => void;
-  accessibilityHint?: string;
-};
+const opcoesOrigem = [
+  { label: "Doação", value: "Doação" },
+  { label: "Compra", value: "Compra" },
+];
 
-function BotaoOpcao({
-  texto,
-  selecionado,
-  carregando,
-  aoPressionar,
-  accessibilityHint,
-}: BotaoOpcaoProps) {
-  return (
-    <Pressable
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${texto}${selecionado ? ", selecionado" : ""}`}
-      accessibilityHint={accessibilityHint || "Toque duas vezes para selecionar."}
-      disabled={carregando}
-      onPress={aoPressionar}
-      style={({ pressed }) => [
-        styles.opcao,
-        {
-          minHeight: 46,
-          justifyContent: "center",
-          opacity: carregando || pressed ? 0.65 : 1,
-        },
-        selecionado && styles.opcaoSelecionada,
-      ]}
-    >
-      <Text
-        style={[
-          styles.textoOpcao,
-          { fontSize: 15 },
-          selecionado && styles.textoOpcaoSelecionada,
-        ]}
-      >
-        {texto}
-      </Text>
-    </Pressable>
-  );
-}
+const opcoesCategoriaGeral = Object.keys(categoriasPorGrupo).map((item) => ({
+  label: item,
+  value: item,
+}));
+
+const opcoesTiposQuantidade = tiposQuantidade.map((item) => ({
+  label: item,
+  value: item,
+}));
+
+const opcoesTiposDoador = tiposDoador.map((item) => ({
+  label: item,
+  value: item,
+}));
+
+const opcoesPrioridade = [
+  { label: "Não marcar", value: "nao" },
+  { label: "Marcar como prioridade", value: "sim" },
+];
+
+const opcoesNivelPrioridade = [
+  { label: "Média", value: "media" },
+  { label: "Alta", value: "alta" },
+];
 
 type BlocoFormularioProps = {
   titulo: string;
@@ -735,7 +720,7 @@ export default function Cadastro() {
                         borderRadius: 14,
                         borderWidth: 1,
                         borderColor: colors.borda,
-                        backgroundColor: pressed ? "#F1F6EF" : "#FFFFFF",
+                        backgroundColor: pressed ? colors.principalMuitoClaro : colors.card,
                         marginBottom: 10,
                       },
                     ]}
@@ -766,7 +751,7 @@ export default function Cadastro() {
             <Pressable
               onPress={() => setModalDoadoresVisivel(false)}
               style={{
-                backgroundColor: "#527853",
+                backgroundColor: colors.principal,
                 paddingVertical: 14,
                 borderRadius: 14,
                 alignItems: "center",
@@ -775,7 +760,7 @@ export default function Cadastro() {
             >
               <Text
                 style={{
-                  color: "#FFFFFF",
+                  color: colors.textoClaro,
                   fontSize: 16,
                   fontWeight: "700",
                 }}
@@ -806,32 +791,25 @@ export default function Cadastro() {
           titulo="1. Origem do item"
           descricao="Escolha se o item entrou por compra da instituição ou por doação."
         >
-          <View style={styles.opcoes}>
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Doação"
-              selecionado={origem === "Doação"}
-              accessibilityHint="Seleciona cadastro de doação e mostra os dados do doador."
-              aoPressionar={() => {
+          <CampoSelecao
+            label="Origem"
+            value={origem}
+            options={opcoesOrigem}
+            disabled={carregando}
+            onChange={(valor) => {
+              if (valor === "Doação") {
                 setOrigem("Doação");
                 setValorCompra("");
-              }}
-            />
+                return;
+              }
 
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Compra"
-              selecionado={origem === "Compra"}
-              accessibilityHint="Seleciona cadastro de compra e mostra o campo de valor."
-              aoPressionar={() => {
-                setOrigem("Compra");
-                setNomeDoador("");
-                setTipoDoador("Pessoa física");
-                setCidadeDoador("Itapira");
-                setContatoDoador("");
-              }}
-            />
-          </View>
+              setOrigem("Compra");
+              setNomeDoador("");
+              setTipoDoador("Pessoa física");
+              setCidadeDoador("Itapira");
+              setContatoDoador("");
+            }}
+          />
         </BlocoFormulario>
 
         <BlocoFormulario
@@ -847,7 +825,7 @@ export default function Cadastro() {
             onPress={() => setScannerAberto(true)}
             style={({ pressed }) => [
               {
-                backgroundColor: "#527853",
+                backgroundColor: colors.principal,
                 paddingVertical: 14,
                 paddingHorizontal: 18,
                 borderRadius: 14,
@@ -859,7 +837,7 @@ export default function Cadastro() {
           >
             <Text
               style={{
-                color: "#FFFFFF",
+                color: colors.textoClaro,
                 fontSize: 16,
                 fontWeight: "700",
               }}
@@ -871,7 +849,7 @@ export default function Cadastro() {
           {(codigoBarras || marca) && (
             <View
               style={{
-                backgroundColor: "#F1F6EF",
+                backgroundColor: colors.principalMuitoClaro,
                 borderRadius: 14,
                 padding: 12,
                 marginBottom: 14,
@@ -943,53 +921,23 @@ export default function Cadastro() {
             keyboardType="numeric"
           />
 
-          <Text style={styles.label}>Tipo do produto</Text>
+          <CampoSelecao
+            label="Tipo do produto"
+            value={categoriaGeral}
+            options={opcoesCategoriaGeral}
+            disabled={carregando}
+            onChange={selecionarCategoriaGeral}
+          />
 
-          <View style={styles.opcoes}>
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Alimentos"
-              selecionado={categoriaGeral === "Alimentos"}
-              aoPressionar={() => selecionarCategoriaGeral("Alimentos")}
-            />
-
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Limpeza"
-              selecionado={categoriaGeral === "Limpeza"}
-              aoPressionar={() => selecionarCategoriaGeral("Limpeza")}
-            />
-
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Higiene"
-              selecionado={categoriaGeral === "Higiene"}
-              aoPressionar={() => selecionarCategoriaGeral("Higiene")}
-            />
-
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Outros"
-              selecionado={categoriaGeral === "Outros"}
-              aoPressionar={() => selecionarCategoriaGeral("Outros")}
-            />
-          </View>
-
-          <Text style={styles.label}>Categoria específica</Text>
-
-          <View style={styles.opcoes}>
-            {categoriasPorGrupo[
+          <CampoSelecao
+            label="Categoria específica"
+            value={categoria}
+            options={categoriasPorGrupo[
               categoriaGeral as keyof typeof categoriasPorGrupo
-            ].map((item) => (
-              <BotaoOpcao
-                carregando={carregando}
-                key={item}
-                texto={item}
-                selecionado={categoria === item}
-                aoPressionar={() => setCategoria(item)}
-              />
-            ))}
-          </View>
+            ].map((item) => ({ label: item, value: item }))}
+            disabled={carregando}
+            onChange={setCategoria}
+          />
 
           <Text style={styles.label}>Quantidade</Text>
 
@@ -1005,19 +953,13 @@ export default function Cadastro() {
             keyboardType="numeric"
           />
 
-          <Text style={styles.label}>Medida</Text>
-
-          <View style={styles.opcoes}>
-            {tiposQuantidade.map((item) => (
-              <BotaoOpcao
-                carregando={carregando}
-                key={item}
-                texto={item}
-                selecionado={tipoQuantidade === item}
-                aoPressionar={() => setTipoQuantidade(item)}
-              />
-            ))}
-          </View>
+          <CampoSelecao
+            label="Medida"
+            value={tipoQuantidade}
+            options={opcoesTiposQuantidade}
+            disabled={carregando}
+            onChange={setTipoQuantidade}
+          />
 
           <Text style={styles.label}>Validade</Text>
 
@@ -1050,7 +992,7 @@ export default function Cadastro() {
               onPress={() => setLeitorValidadeAberto(true)}
               style={({ pressed }) => [
                 {
-                  backgroundColor: "#527853",
+                  backgroundColor: colors.principal,
                   paddingVertical: 14,
                   paddingHorizontal: 14,
                   borderRadius: 14,
@@ -1061,7 +1003,7 @@ export default function Cadastro() {
             >
               <Text
                 style={{
-                  color: "#FFFFFF",
+                  color: colors.textoClaro,
                   fontSize: 14,
                   fontWeight: "700",
                 }}
@@ -1071,48 +1013,31 @@ export default function Cadastro() {
             </Pressable>
           </View>
 
-          <Text style={styles.label}>Prioridade para doação</Text>
+          <CampoSelecao
+            label="Prioridade para doação"
+            value={prioridadeDoacao ? "sim" : "nao"}
+            options={opcoesPrioridade}
+            disabled={carregando}
+            onChange={(valor) => {
+              if (valor === "sim") {
+                setPrioridadeDoacao(true);
+                return;
+              }
 
-          <View style={styles.opcoes}>
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Não marcar"
-              selecionado={!prioridadeDoacao}
-              accessibilityHint="Mantém o item sem destaque manual para doação."
-              aoPressionar={() => {
-                setPrioridadeDoacao(false);
-                setMotivoPrioridadeDoacao("");
-              }}
-            />
-
-            <BotaoOpcao
-              carregando={carregando}
-              texto="Marcar como prioridade"
-              selecionado={prioridadeDoacao}
-              accessibilityHint="Marca o item para aparecer na área de itens necessários para doação."
-              aoPressionar={() => setPrioridadeDoacao(true)}
-            />
-          </View>
+              setPrioridadeDoacao(false);
+              setMotivoPrioridadeDoacao("");
+            }}
+          />
 
           {prioridadeDoacao && (
             <>
-              <Text style={styles.label}>Nível da prioridade</Text>
-
-              <View style={styles.opcoes}>
-                <BotaoOpcao
-                  carregando={carregando}
-                  texto="Média"
-                  selecionado={nivelPrioridadeDoacao === "media"}
-                  aoPressionar={() => setNivelPrioridadeDoacao("media")}
-                />
-
-                <BotaoOpcao
-                  carregando={carregando}
-                  texto="Alta"
-                  selecionado={nivelPrioridadeDoacao === "alta"}
-                  aoPressionar={() => setNivelPrioridadeDoacao("alta")}
-                />
-              </View>
+              <CampoSelecao
+                label="Nível da prioridade"
+                value={nivelPrioridadeDoacao}
+                options={opcoesNivelPrioridade}
+                disabled={carregando}
+                onChange={setNivelPrioridadeDoacao}
+              />
 
               <Text style={styles.label}>Motivo da prioridade</Text>
 
@@ -1166,7 +1091,7 @@ export default function Cadastro() {
               onPress={carregarDoadores}
               style={({ pressed }) => [
                 {
-                  backgroundColor: "#527853",
+                  backgroundColor: colors.principal,
                   paddingVertical: 14,
                   paddingHorizontal: 18,
                   borderRadius: 14,
@@ -1178,11 +1103,11 @@ export default function Cadastro() {
               ]}
             >
               {carregandoDoadores ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={colors.textoClaro} />
               ) : (
                 <Text
                   style={{
-                    color: "#FFFFFF",
+                    color: colors.textoClaro,
                     fontSize: 16,
                     fontWeight: "700",
                   }}
@@ -1205,19 +1130,13 @@ export default function Cadastro() {
               onChangeText={setNomeDoador}
             />
 
-            <Text style={styles.label}>Tipo do doador</Text>
-
-            <View style={styles.opcoes}>
-              {tiposDoador.map((item) => (
-                <BotaoOpcao
-                  carregando={carregando}
-                  key={item}
-                  texto={item}
-                  selecionado={tipoDoador === item}
-                  aoPressionar={() => setTipoDoador(item)}
-                />
-              ))}
-            </View>
+            <CampoSelecao
+              label="Tipo do doador"
+              value={tipoDoador}
+              options={opcoesTiposDoador}
+              disabled={carregando}
+              onChange={setTipoDoador}
+            />
 
             <Text style={styles.label}>Cidade</Text>
 

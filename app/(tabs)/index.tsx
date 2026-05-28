@@ -19,7 +19,7 @@ import {
 } from "react-native";
 
 import { auth, db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 export default function Inicio() {
   const [alimentos, setAlimentos] = useState<any[]>([]);
@@ -74,7 +74,7 @@ export default function Inicio() {
         console.log(error);
         setCarregandoDados(false);
         Alert.alert("Erro", "Não foi possível carregar os dados.");
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -83,7 +83,7 @@ export default function Inicio() {
   useEffect(() => {
     const consulta = query(
       collection(db, "movimentacoes"),
-      orderBy("data", "desc")
+      orderBy("data", "desc"),
     );
 
     const unsubscribe = onSnapshot(
@@ -102,12 +102,11 @@ export default function Inicio() {
       },
       (error) => {
         console.log(error);
-      }
+      },
     );
 
     return () => unsubscribe();
   }, []);
-
 
   const converterData = (data: any) => {
     if (!data) return null;
@@ -204,7 +203,7 @@ export default function Inicio() {
   const itensEstoqueBaixo = alimentos.filter((item) => estoqueBaixo(item));
 
   const itensZerados = alimentos.filter(
-    (item) => Number(item.quantidade || 0) <= 0
+    (item) => Number(item.quantidade || 0) <= 0,
   );
 
   const movimentacoesMes = movimentacoes.filter((item) => {
@@ -219,11 +218,11 @@ export default function Inicio() {
   });
 
   const entradasMes = movimentacoesMes.filter(
-    (item) => item.tipo === "entrada"
+    (item) => item.tipo === "entrada",
   ).length;
 
   const saidasMes = movimentacoesMes.filter(
-    (item) => item.tipo === "saida"
+    (item) => item.tipo === "saida",
   ).length;
 
   const ultimasMovimentacoes = movimentacoes.slice(0, 3);
@@ -252,11 +251,13 @@ export default function Inicio() {
     valor,
     descricao,
     tipo = "neutro",
+    rota,
   }: {
     titulo: string;
     valor: number | string;
     descricao: string;
     tipo?: "neutro" | "sucesso" | "alerta" | "perigo" | "info";
+    rota?: string;
   }) => {
     let corFundo = colors.card;
     let corBorda = colors.borda;
@@ -286,25 +287,8 @@ export default function Inicio() {
       corNumero = colors.secundario;
     }
 
-    return (
-      <View
-        accessible
-        accessibilityRole="text"
-        accessibilityLabel={`${titulo}. Valor: ${valor}. ${descricao}`}
-        style={{
-          backgroundColor: corFundo,
-          borderWidth: 1,
-          borderColor: corBorda,
-          borderRadius: 16,
-          paddingVertical: 12,
-          paddingHorizontal: 14,
-          marginBottom: 10,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          minHeight: 74,
-        }}
-      >
+    const conteudo = (
+      <>
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text
             style={{
@@ -339,6 +323,57 @@ export default function Inicio() {
         >
           {valor}
         </Text>
+      </>
+    );
+
+    if (rota) {
+      return (
+        <Pressable
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={`${titulo}. Valor: ${valor}. ${descricao}`}
+          accessibilityHint="Toque duas vezes para abrir a tela relacionada."
+          onPress={() => router.push(rota)}
+          style={({ pressed }) => ({
+            backgroundColor: corFundo,
+            borderWidth: 1,
+            borderColor: corBorda,
+            borderRadius: 16,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            marginBottom: 10,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            minHeight: 74,
+            opacity: pressed ? 0.75 : 1,
+          })}
+        >
+          {conteudo}
+        </Pressable>
+      );
+    }
+
+    return (
+      <View
+        accessible
+        accessibilityRole="text"
+        accessibilityLabel={`${titulo}. Valor: ${valor}. ${descricao}`}
+        style={{
+          backgroundColor: corFundo,
+          borderWidth: 1,
+          borderColor: corBorda,
+          borderRadius: 16,
+          paddingVertical: 12,
+          paddingHorizontal: 14,
+          marginBottom: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          minHeight: 74,
+        }}
+      >
+        {conteudo}
       </View>
     );
   };
@@ -352,7 +387,9 @@ export default function Inicio() {
         accessibilityRole="text"
         accessibilityLabel={`${situacaoEstoque}. ${descricaoSituacao}`}
         style={{
-          backgroundColor: estaTudoBem ? colors.sucessoFundo : colors.alertaFundo,
+          backgroundColor: estaTudoBem
+            ? colors.sucessoFundo
+            : colors.alertaFundo,
           borderWidth: 1,
           borderColor: estaTudoBem ? colors.sucesso : colors.alerta,
           borderRadius: 20,
@@ -495,55 +532,6 @@ export default function Inicio() {
     );
   };
 
-  const BotaoAcao = ({
-    texto,
-    descricao,
-    rota,
-  }: {
-    texto: string;
-    descricao: string;
-    rota: string;
-  }) => (
-    <Pressable
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${texto}. ${descricao}`}
-      accessibilityHint="Toque duas vezes para abrir esta tela."
-      onPress={() => router.push(rota)}
-      style={({ pressed }) => ({
-        backgroundColor: colors.card,
-        borderRadius: 16,
-        padding: 15,
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: colors.borda,
-        minHeight: 70,
-        opacity: pressed ? 0.75 : 1,
-      })}
-    >
-      <Text
-        style={{
-          fontSize: 17,
-          fontWeight: "900",
-          color: colors.principalEscuro,
-          marginBottom: 4,
-        }}
-      >
-        {texto}
-      </Text>
-
-      <Text
-        style={{
-          fontSize: 14,
-          color: colors.textoSuave,
-          lineHeight: 20,
-        }}
-      >
-        {descricao}
-      </Text>
-    </Pressable>
-  );
-
   return (
     <ScrollView
       style={styles.container}
@@ -584,6 +572,7 @@ export default function Inicio() {
             valor={alimentos.length}
             descricao="Total de itens registrados"
             tipo="info"
+            rota="/estoque"
           />
 
           <LinhaResumo
@@ -591,6 +580,7 @@ export default function Inicio() {
             valor={totalAlertas}
             descricao="Itens vencidos, baixos ou zerados"
             tipo={totalAlertas > 0 ? "alerta" : "sucesso"}
+            rota="/alertas"
           />
 
           <Text accessibilityRole="header" style={styles.subtitulo}>
@@ -602,6 +592,7 @@ export default function Inicio() {
             valor={itensVencidos.length}
             descricao="Produtos fora da validade"
             tipo={itensVencidos.length > 0 ? "perigo" : "sucesso"}
+            rota="/alertas"
           />
 
           <LinhaResumo
@@ -609,6 +600,7 @@ export default function Inicio() {
             valor={itensVencendo.length}
             descricao="Produtos para usar primeiro"
             tipo={itensVencendo.length > 0 ? "alerta" : "sucesso"}
+            rota="/alertas"
           />
 
           <LinhaResumo
@@ -616,6 +608,7 @@ export default function Inicio() {
             valor={itensEstoqueBaixo.length}
             descricao="Produtos com pouca quantidade"
             tipo={itensEstoqueBaixo.length > 0 ? "alerta" : "sucesso"}
+            rota="/alertas"
           />
 
           <LinhaResumo
@@ -623,6 +616,7 @@ export default function Inicio() {
             valor={itensZerados.length}
             descricao="Produtos sem quantidade disponível"
             tipo={itensZerados.length > 0 ? "perigo" : "sucesso"}
+            rota="/alertas"
           />
 
           {(ehAdministrador || ehCozinheiro) && (
@@ -660,51 +654,8 @@ export default function Inicio() {
               <CardMovimentacao key={item.id} item={item} />
             ))
           )}
-
-          <Text accessibilityRole="header" style={styles.subtitulo}>
-            Ações rápidas
-          </Text>
-
-          {(ehAdministrador || ehCozinheiro) && (
-            <>
-              <BotaoAcao
-                texto="Cadastrar item"
-                descricao="Registrar compra ou doação recebida."
-                rota="/cadastro"
-              />
-
-              <BotaoAcao
-                texto="Consultar estoque"
-                descricao="Ver itens e registrar entrada ou saída."
-                rota="/estoque"
-              />
-
-              <BotaoAcao
-                texto="Ver alertas"
-                descricao="Conferir vencidos, baixos ou zerados."
-                rota="/alertas"
-              />
-            </>
-          )}
-
-          {ehAdministrador && (
-            <>
-              <BotaoAcao
-                texto="Histórico"
-                descricao="Acompanhar entradas, saídas, compras e doações."
-                rota="/historico"
-              />
-
-              <BotaoAcao
-                texto="Análise IA"
-                descricao="Ver agrupamento de perfis de doadores."
-                rota="/analise"
-              />
-            </>
-          )}
         </>
       )}
-
     </ScrollView>
   );
 }

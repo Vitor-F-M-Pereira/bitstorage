@@ -23,8 +23,9 @@ import {
   View,
 } from "react-native";
 
+import CampoSelecao from "../../components/CampoSelecao";
 import { db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 const categoriasPorGrupo = {
   Alimentos: [
@@ -801,8 +802,8 @@ export default function Doacoes() {
                     gap: 8,
                   })}
                 >
-                  <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
-                  <Text style={{ color: "#FFFFFF", fontWeight: "900" }}>
+                  <Ionicons name="logo-whatsapp" size={18} color={colors.textoClaro} />
+                  <Text style={{ color: colors.textoClaro, fontWeight: "900" }}>
                     Gerar mensagem
                   </Text>
                 </Pressable>
@@ -927,62 +928,51 @@ export default function Doacoes() {
             editable={!salvandoItem}
           />
 
-          <Text style={styles.label}>Tipo</Text>
-          <View style={styles.grupoOpcoes}>
-            {Object.keys(categoriasPorGrupo).map((grupo) => (
-              <BotaoOpcao
-                key={grupo}
-                texto={grupo}
-                selecionado={categoriaGeral === grupo}
-                disabled={salvandoItem}
-                onPress={() => selecionarCategoriaGeral(grupo)}
-              />
-            ))}
-          </View>
+          <CampoSelecao
+            label="Tipo"
+            value={categoriaGeral}
+            disabled={salvandoItem}
+            onChange={selecionarCategoriaGeral}
+            options={Object.keys(categoriasPorGrupo).map((grupo) => ({
+              label: grupo,
+              value: grupo,
+            }))}
+          />
 
-          <Text style={styles.label}>Categoria</Text>
-          <View style={styles.grupoOpcoes}>
-            {categoriasPorGrupo[categoriaGeral as keyof typeof categoriasPorGrupo].map(
-              (opcao) => (
-                <BotaoOpcao
-                  key={opcao}
-                  texto={opcao}
-                  selecionado={categoria === opcao}
-                  disabled={salvandoItem}
-                  onPress={() => setCategoria(opcao)}
-                />
-              )
-            )}
-          </View>
+          <CampoSelecao
+            label="Categoria"
+            value={categoria}
+            disabled={salvandoItem}
+            onChange={setCategoria}
+            options={categoriasPorGrupo[
+              categoriaGeral as keyof typeof categoriasPorGrupo
+            ].map((opcao) => ({
+              label: opcao,
+              value: opcao,
+            }))}
+          />
 
-          <Text style={styles.label}>Nível de prioridade</Text>
-          <View style={styles.grupoOpcoes}>
-            {opcoesPrioridade.map((opcao) => (
-              <BotaoOpcao
-                key={opcao.id}
-                texto={opcao.texto}
-                selecionado={nivelPrioridade === opcao.id}
-                disabled={salvandoItem}
-                onPress={() => setNivelPrioridade(opcao.id)}
-              />
-            ))}
-          </View>
+          <CampoSelecao
+            label="Nível de prioridade"
+            value={nivelPrioridade}
+            disabled={salvandoItem}
+            onChange={setNivelPrioridade}
+            options={opcoesPrioridade.map((opcao) => ({
+              label: opcao.texto,
+              value: opcao.id,
+            }))}
+          />
 
-          <Text style={styles.label}>É campanha?</Text>
-          <View style={styles.grupoOpcoes}>
-            <BotaoOpcao
-              texto="Sim"
-              selecionado={campanha}
-              disabled={salvandoItem}
-              onPress={() => setCampanha(true)}
-            />
-            <BotaoOpcao
-              texto="Não"
-              selecionado={!campanha}
-              disabled={salvandoItem}
-              onPress={() => setCampanha(false)}
-            />
-          </View>
+          <CampoSelecao
+            label="É campanha?"
+            value={campanha ? "sim" : "nao"}
+            disabled={salvandoItem}
+            onChange={(valor) => setCampanha(valor === "sim")}
+            options={[
+              { label: "Sim", value: "sim" },
+              { label: "Não", value: "nao" },
+            ]}
+          />
 
           <Text style={styles.label}>Motivo ou observação</Text>
           <TextInput
@@ -1005,7 +995,7 @@ export default function Doacoes() {
             ]}
           >
             {salvandoItem ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.textoClaro} />
             ) : (
               <Text style={styles.textoBotao}>Adicionar item prioritário</Text>
             )}
@@ -1022,43 +1012,15 @@ export default function Doacoes() {
             marginBottom: 16,
           }}
         >
-          <Text style={[styles.subtitulo, { marginHorizontal: 4 }]}>Filtrar lista</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 4, paddingBottom: 4 }}
-          >
-            {opcoesFiltro.map((opcao) => (
-              <Pressable
-                key={opcao.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Filtrar por ${opcao.texto}`}
-                onPress={() => setFiltro(opcao.id)}
-                style={({ pressed }) => ({
-                  minHeight: 42,
-                  paddingHorizontal: 14,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: filtro === opcao.id ? colors.principal : colors.borda,
-                  backgroundColor:
-                    filtro === opcao.id ? colors.principalClaro : colors.card,
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
-                <Text
-                  style={{
-                    color:
-                      filtro === opcao.id ? colors.principalEscuro : colors.textoSuave,
-                    fontWeight: "900",
-                  }}
-                >
-                  {opcao.texto}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <CampoSelecao
+            label="Filtrar lista"
+            value={filtro}
+            onChange={(valor) => setFiltro(valor as Filtro)}
+            options={opcoesFiltro.map((opcao) => ({
+              label: opcao.texto,
+              value: opcao.id,
+            }))}
+          />
         </View>
 
         {itensNecessarios.length === 0 ? (

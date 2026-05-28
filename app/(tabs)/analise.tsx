@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 import { auth, db } from "../../services/firebaseConfig";
-import { colors, styles } from "../../styles/estoqueStyles";
+import { colors, styles } from "../../styles/globalStyles";
 
 type Doacao = {
   id: string;
@@ -496,7 +496,7 @@ export default function AnaliseIA() {
         >
           <Text
             style={{
-              color: "#FFFFFF",
+              color: colors.textoClaro,
               fontWeight: "900",
               fontSize: 15,
             }}
@@ -701,44 +701,6 @@ export default function AnaliseIA() {
             {!carregandoAnalise && !resultadoApi && erroApi ? (
               <Text style={styles.listaVazia}>{erroApi}</Text>
             ) : null}
-          </Bloco>
-
-          <Bloco
-            titulo="Como interpretar"
-            descricao="Tradução prática do resultado para a rotina da ONG."
-          >
-            <Text
-              style={{
-                color: colors.textoSuave,
-                lineHeight: 22,
-                fontSize: 15,
-              }}
-            >
-              A clusterização agrupa categorias com comportamento parecido,
-              considerando quantidade total, quantidade média e frequência de
-              registros. Com isso, a ONG consegue identificar quais tipos de
-              itens precisam de mais atenção e direcionar melhor as campanhas de
-              arrecadação.
-            </Text>
-          </Bloco>
-
-          <Bloco
-            titulo="Técnica utilizada"
-            descricao="Explicação resumida para apresentação e relatório."
-          >
-            <Text
-              style={{
-                color: colors.textoSuave,
-                lineHeight: 22,
-                fontSize: 15,
-              }}
-            >
-              Foi utilizado o algoritmo K-Means, uma técnica de aprendizagem não
-              supervisionada. O aplicativo envia os dados de doações para uma API
-              em Python hospedada no Microsoft Azure. A API usa Pandas,
-              Scikit-learn e NumPy para processar os dados, formar os clusters e
-              retornar recomendações para apoio à decisão.
-            </Text>
           </Bloco>
         </>
       )}
